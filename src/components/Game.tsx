@@ -55,8 +55,17 @@ const Controls = styled.div`
     margin-bottom: 20px;
 `;
 
+// Add new styled component for dev controls
+const DevControls = styled.div`
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    margin-left: 20px;
+`;
+
 const Game: React.FC = () => {
     const { themeColors, toggleTheme, theme } = useTheme();
+    const [devMode, setDevMode] = useState(false);
     const [gameState, setGameState] = useState<GameState>({
         players: [],
         shipDeck: [],
@@ -72,20 +81,21 @@ const Game: React.FC = () => {
         const playDeck = createPlayDeck();
         const { playerShips, playerHands, remainingShipDeck, remainingPlayDeck } = dealInitialHands(shipDeck, playDeck, 2);
         
+        // Modify the initial setup to respect dev mode
         const players: Player[] = [
             { 
                 id: '1', 
                 name: 'Player 1', 
-                ships: playerShips[0], 
-                hand: playerHands[0], 
+                ships: playerShips[0].map(ship => ({ ...ship, faceUp: devMode || ship.faceUp })), 
+                hand: playerHands[0].map(card => ({ ...card, faceUp: devMode || card.faceUp })), 
                 playedShips: [], 
                 discardedSalvos: [] 
             },
             { 
                 id: '2', 
                 name: 'Player 2', 
-                ships: playerShips[1], 
-                hand: playerHands[1], 
+                ships: playerShips[1].map(ship => ({ ...ship, faceUp: devMode || ship.faceUp })), 
+                hand: playerHands[1].map(card => ({ ...card, faceUp: devMode || card.faceUp })), 
                 playedShips: [], 
                 discardedSalvos: [] 
             }
@@ -93,8 +103,8 @@ const Game: React.FC = () => {
 
         setGameState({
             players,
-            shipDeck: remainingShipDeck,
-            playDeck: remainingPlayDeck,
+            shipDeck: remainingShipDeck.map(ship => ({ ...ship, faceUp: devMode || ship.faceUp })),
+            playDeck: remainingPlayDeck.map(card => ({ ...card, faceUp: devMode || card.faceUp })),
             currentPlayerIndex: 0,
             gameStarted: true
         });
@@ -105,7 +115,7 @@ const Game: React.FC = () => {
 
         const newState = { ...gameState };
         const drawnCard = newState.playDeck.pop()!;
-        drawnCard.faceUp = true;
+        drawnCard.faceUp = devMode || true; // Make card face up in dev mode
 
         newState.players[newState.currentPlayerIndex].hand.push(drawnCard);
         setGameState(newState);
@@ -140,6 +150,14 @@ const Game: React.FC = () => {
             return;
         }
 
+        // Check if trying to target a carrier when other ships exist
+        const targetPlayer = gameState.players[(gameState.currentPlayerIndex + 1) % 2];
+        const normalShips = targetPlayer.playedShips.filter(s => s.type === 'normal');
+        if (selectedShip.type === 'carrier' && normalShips.length > 0) {
+            alert("Cannot target Aircraft Carriers while other ships remain!");
+            return;
+        }
+
         // Check if the salvo matches the selected ship's gun size
         if (salvo.gunSize !== selectedShip.gunSize) {
             alert("Salvo gun size must match the target ship's gun size!");
@@ -152,7 +170,6 @@ const Game: React.FC = () => {
         newState.players[gameState.currentPlayerIndex].discardedSalvos.push(salvo);
 
         // Find the target ship in the opponent's played ships
-        const targetPlayer = gameState.players[(gameState.currentPlayerIndex + 1) % 2];
         const shipIndex = targetPlayer.playedShips.findIndex(ship => ship === selectedShip);
         
         if (shipIndex !== -1) {
@@ -172,8 +189,9 @@ const Game: React.FC = () => {
             }
         }
 
-        // Check for game over
-        if (newState.players[(gameState.currentPlayerIndex + 1) % 2].playedShips.length === 0) {
+        // Check for game over - now includes checking both normal ships and carriers
+        const remainingShips = newState.players[(gameState.currentPlayerIndex + 1) % 2].playedShips;
+        if (remainingShips.length === 0) {
             alert(`${currentPlayer.name} wins!`);
             newState.gameStarted = false;
         } else {
@@ -186,7 +204,39 @@ const Game: React.FC = () => {
     };
 
     const selectShip = (ship: ShipCard) => {
+        const targetPlayer = gameState.players[(gameState.currentPlayerIndex + 1) % 2];
+        const normalShips = targetPlayer.playedShips.filter(s => s.type === 'normal');
+
+        // Only allow targeting carriers if no other ships remain
+        if (ship.type === 'carrier' && normalShips.length > 0) {
+            alert("Cannot target Aircraft Carriers while other ships remain!");
+            return;
+        }
+
         setSelectedShip(ship === selectedShip ? null : ship);
+    };
+
+    // Add function to toggle dev mode
+    const toggleDevMode = () => {
+        const newDevMode = !devMode;
+        setDevMode(newDevMode);
+        
+        if (gameState.gameStarted) {
+            // Update all cards' visibility when toggling dev mode
+            const newState = {
+                ...gameState,
+                players: gameState.players.map(player => ({
+                    ...player,
+                    ships: player.ships.map(ship => ({ ...ship, faceUp: newDevMode || ship.faceUp })),
+                    hand: player.hand.map(card => ({ ...card, faceUp: newDevMode || card.faceUp })),
+                    playedShips: player.playedShips.map(ship => ({ ...ship, faceUp: newDevMode || ship.faceUp })),
+                    discardedSalvos: player.discardedSalvos.map(card => ({ ...card, faceUp: newDevMode || card.faceUp }))
+                })),
+                shipDeck: gameState.shipDeck.map(ship => ({ ...ship, faceUp: newDevMode || ship.faceUp })),
+                playDeck: gameState.playDeck.map(card => ({ ...card, faceUp: newDevMode || card.faceUp }))
+            };
+            setGameState(newState);
+        }
     };
 
     return (
@@ -202,9 +252,20 @@ const Game: React.FC = () => {
                         )}
                     </div>
                 )}
-                <Button themeColors={themeColors} onClick={toggleTheme}>
-                    Switch to {theme === 'light' ? 'Dark' : 'Light'} Mode
-                </Button>
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <DevControls>
+                        <Button 
+                            themeColors={themeColors} 
+                            onClick={toggleDevMode}
+                            style={{ backgroundColor: devMode ? themeColors.buttonHover : themeColors.buttonBackground }}
+                        >
+                            Dev Mode: {devMode ? 'ON' : 'OFF'}
+                        </Button>
+                    </DevControls>
+                    <Button themeColors={themeColors} onClick={toggleTheme}>
+                        Switch to {theme === 'light' ? 'Dark' : 'Light'} Mode
+                    </Button>
+                </div>
             </Controls>
             {gameState.gameStarted && (
                 <GameBoard>
@@ -218,7 +279,7 @@ const Game: React.FC = () => {
                         <DeckArea>
                             {gameState.playDeck.length > 0 && (
                                 <Card 
-                                    card={{ gunSize: 11, damage: 0, faceUp: false } as SalvoCard}
+                                    card={{ gunSize: 11, damage: 0, faceUp: devMode } as SalvoCard}
                                     onClick={drawSalvo}
                                 />
                             )}

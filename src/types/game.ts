@@ -1,10 +1,12 @@
 export type GunSize = 11 | 12.6 | 14 | 15 | 16 | 18;
+export type ShipType = 'normal' | 'carrier';
 
 export interface ShipCard {
     gunSize: GunSize;
     hitPoints: number;
     name: string;
     faceUp: boolean;
+    type: ShipType;
 }
 
 export interface SalvoCard {
@@ -32,18 +34,62 @@ export interface GameState {
 
 export const createShipDeck = (): ShipCard[] => {
     const ships: ShipCard[] = [
+        // Aircraft Carriers (2 cards)
+        ...Array(2).fill(null).map(() => ({ 
+            gunSize: 14 as GunSize, 
+            hitPoints: 8, 
+            name: "Aircraft Carrier", 
+            faceUp: false,
+            type: 'carrier' as ShipType
+        })),
         // 11-inch gun ships (10 cards)
-        ...Array(10).fill(null).map(() => ({ gunSize: 11 as GunSize, hitPoints: 3, name: "Light Cruiser", faceUp: false })),
+        ...Array(10).fill(null).map(() => ({ 
+            gunSize: 11 as GunSize, 
+            hitPoints: 3, 
+            name: "Light Cruiser", 
+            faceUp: false,
+            type: 'normal' as ShipType
+        })),
         // 12.6-inch gun ships (10 cards)
-        ...Array(10).fill(null).map(() => ({ gunSize: 12.6 as GunSize, hitPoints: 4, name: "Heavy Cruiser", faceUp: false })),
+        ...Array(10).fill(null).map(() => ({ 
+            gunSize: 12.6 as GunSize, 
+            hitPoints: 4, 
+            name: "Heavy Cruiser", 
+            faceUp: false,
+            type: 'normal' as ShipType
+        })),
         // 14-inch gun ships (12 cards)
-        ...Array(12).fill(null).map(() => ({ gunSize: 14 as GunSize, hitPoints: 5, name: "Battlecruiser", faceUp: false })),
+        ...Array(12).fill(null).map(() => ({ 
+            gunSize: 14 as GunSize, 
+            hitPoints: 5, 
+            name: "Battlecruiser", 
+            faceUp: false,
+            type: 'normal' as ShipType
+        })),
         // 15-inch gun ships (8 cards)
-        ...Array(8).fill(null).map(() => ({ gunSize: 15 as GunSize, hitPoints: 6, name: "Battleship", faceUp: false })),
+        ...Array(8).fill(null).map(() => ({ 
+            gunSize: 15 as GunSize, 
+            hitPoints: 6, 
+            name: "Battleship", 
+            faceUp: false,
+            type: 'normal' as ShipType
+        })),
         // 16-inch gun ships (8 cards)
-        ...Array(8).fill(null).map(() => ({ gunSize: 16 as GunSize, hitPoints: 7, name: "Super Battleship", faceUp: false })),
+        ...Array(8).fill(null).map(() => ({ 
+            gunSize: 16 as GunSize, 
+            hitPoints: 7, 
+            name: "Super Battleship", 
+            faceUp: false,
+            type: 'normal' as ShipType
+        })),
         // 18-inch gun ships (6 cards)
-        ...Array(6).fill(null).map(() => ({ gunSize: 18 as GunSize, hitPoints: 9, name: "Super Dreadnought", faceUp: false })),
+        ...Array(6).fill(null).map(() => ({ 
+            gunSize: 18 as GunSize, 
+            hitPoints: 9, 
+            name: "Super Dreadnought", 
+            faceUp: false,
+            type: 'normal' as ShipType
+        })),
     ];
     
     return shuffle(ships);

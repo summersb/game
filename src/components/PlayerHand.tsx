@@ -60,6 +60,12 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
 }) => {
     const { themeColors } = useTheme();
     
+    // Separate normal ships and carriers
+    const normalShips = player.playedShips.filter(ship => ship.type === 'normal');
+    const carriers = player.playedShips.filter(ship => ship.type === 'carrier');
+    const normalShipsInHand = player.ships.filter(ship => ship.type === 'normal');
+    const carriersInHand = player.ships.filter(ship => ship.type === 'carrier');
+    
     return (
         <HandContainer themeColors={themeColors}>
             <PlayerName themeColors={themeColors}>
@@ -67,18 +73,18 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
             </PlayerName>
             <Section>
                 <SectionTitle themeColors={themeColors}>
-                    Ships
+                    Battle Line Ships
                 </SectionTitle>
                 <SubSection>
                     <SubSectionTitle themeColors={themeColors}>In Hand</SubSectionTitle>
                     <CardsContainer>
-                        {player.ships.map((ship, index) => (
+                        {normalShipsInHand.map((ship, index) => (
                             <Card
                                 key={`hand-ship-${index}`}
                                 card={ship}
                                 onClick={() => {
                                     if (!isCurrentPlayer) return;
-                                    onCardClick && onCardClick(index);
+                                    onCardClick && onCardClick(player.ships.indexOf(ship));
                                 }}
                             />
                         ))}
@@ -87,7 +93,7 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                 <SubSection>
                     <SubSectionTitle themeColors={themeColors}>Deployed</SubSectionTitle>
                     <CardsContainer>
-                        {player.playedShips.map((ship, index) => (
+                        {normalShips.map((ship, index) => (
                             <Card
                                 key={`deployed-ship-${index}`}
                                 card={ship}
@@ -97,26 +103,63 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                     </CardsContainer>
                 </SubSection>
             </Section>
-            {isCurrentPlayer && (
-                <Section>
-                    <SectionTitle themeColors={themeColors}>Salvos</SectionTitle>
+            <Section>
+                <SectionTitle themeColors={themeColors}>
+                    Aircraft Carriers
+                </SectionTitle>
+                <SubSection>
+                    <SubSectionTitle themeColors={themeColors}>In Hand</SubSectionTitle>
                     <CardsContainer>
-                        {player.hand.map((salvo, index) => (
+                        {carriersInHand.map((ship, index) => (
                             <Card
-                                key={`salvo-${index}`}
-                                card={salvo}
+                                key={`hand-carrier-${index}`}
+                                card={ship}
                                 onClick={() => {
-                                    if (!selectedShip && onCardClick) {
-                                        alert("Please select a target ship first!");
-                                        return;
-                                    }
-                                    onCardClick && onCardClick(index);
+                                    if (!isCurrentPlayer) return;
+                                    onCardClick && onCardClick(player.ships.indexOf(ship));
                                 }}
                             />
                         ))}
                     </CardsContainer>
-                </Section>
-            )}
+                </SubSection>
+                <SubSection>
+                    <SubSectionTitle themeColors={themeColors}>Deployed</SubSectionTitle>
+                    <CardsContainer>
+                        {carriers.map((ship, index) => (
+                            <Card
+                                key={`deployed-carrier-${index}`}
+                                card={ship}
+                                onClick={() => {
+                                    if (!isCurrentPlayer && onShipClick && normalShips.length === 0) {
+                                        onShipClick(ship);
+                                    } else if (!isCurrentPlayer && normalShips.length > 0) {
+                                        alert("Cannot target Aircraft Carriers while other ships remain!");
+                                    }
+                                }}
+                            />
+                        ))}
+                    </CardsContainer>
+                </SubSection>
+            </Section>
+            <Section>
+                <SectionTitle themeColors={themeColors}>Salvos</SectionTitle>
+                <CardsContainer>
+                    {player.hand.map((salvo, index) => (
+                        <Card
+                            key={`salvo-${index}`}
+                            card={salvo}
+                            onClick={() => {
+                                if (!isCurrentPlayer) return;
+                                if (!selectedShip && onCardClick) {
+                                    alert("Please select a target ship first!");
+                                    return;
+                                }
+                                onCardClick && onCardClick(player.ships.length + index);
+                            }}
+                        />
+                    ))}
+                </CardsContainer>
+            </Section>
         </HandContainer>
     );
 };
