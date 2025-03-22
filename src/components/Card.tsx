@@ -1,18 +1,17 @@
 import styled from '@emotion/styled';
-import { Card as CardType } from '../types/game';
+import { ShipCard, SalvoCard } from '../types/game';
 import { useTheme } from '../context/ThemeContext';
 
 const CardContainer = styled.div<{ faceUp: boolean; themeColors: any }>`
-    width: 60px;
-    height: 90px;
+    width: 120px;
+    height: 180px;
     border: 1px solid ${props => props.themeColors.cardText}33;
     border-radius: 8px;
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    align-items: center;
+    padding: 10px;
     background-color: ${props => props.faceUp ? props.themeColors.cardBackground : props.themeColors.buttonBackground};
-    color: ${props => props.faceUp ? (props.color === 'red' ? '#d32f2f' : props.themeColors.cardText) : props.themeColors.buttonText};
+    color: ${props => props.faceUp ? props.themeColors.cardText : props.themeColors.buttonText};
     cursor: pointer;
     user-select: none;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
@@ -23,49 +22,71 @@ const CardContainer = styled.div<{ faceUp: boolean; themeColors: any }>`
     }
 `;
 
-const Rank = styled.div`
-    font-size: 1.5em;
+const CardTitle = styled.div`
+    font-size: 1.2em;
     font-weight: bold;
+    text-align: center;
+    margin-bottom: 10px;
 `;
 
-const Suit = styled.div`
-    font-size: 1.2em;
+const CardStats = styled.div`
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    align-items: center;
+    flex-grow: 1;
+    justify-content: center;
+`;
+
+const StatLine = styled.div`
+    font-size: 1em;
+    display: flex;
+    gap: 5px;
+    align-items: center;
 `;
 
 interface CardProps {
-    card: CardType;
+    card: ShipCard | SalvoCard;
     onClick?: () => void;
 }
 
-const getSuitSymbol = (suit: string): string => {
-    switch (suit) {
-        case 'hearts': return '♥';
-        case 'diamonds': return '♦';
-        case 'clubs': return '♣';
-        case 'spades': return '♠';
-        default: return '';
-    }
+const isShipCard = (card: ShipCard | SalvoCard): card is ShipCard => {
+    return 'hitPoints' in card;
 };
 
 const Card: React.FC<CardProps> = ({ card, onClick }) => {
     const { themeColors } = useTheme();
-    const suitSymbol = getSuitSymbol(card.suit);
-    const color = card.suit === 'hearts' || card.suit === 'diamonds' ? 'red' : 'black';
 
     return (
         <CardContainer 
             faceUp={card.faceUp} 
             onClick={onClick}
-            color={color}
             themeColors={themeColors}
         >
             {card.faceUp ? (
                 <>
-                    <Rank>{card.rank}</Rank>
-                    <Suit>{suitSymbol}</Suit>
+                    <CardTitle>
+                        {isShipCard(card) ? card.name : 'Salvo'}
+                    </CardTitle>
+                    <CardStats>
+                        <StatLine>
+                            🎯 {card.gunSize}" guns
+                        </StatLine>
+                        {isShipCard(card) ? (
+                            <StatLine>
+                                ❤️ {card.hitPoints} HP
+                            </StatLine>
+                        ) : (
+                            <StatLine>
+                                💥 {card.damage} damage
+                            </StatLine>
+                        )}
+                    </CardStats>
                 </>
             ) : (
-                <div>🎴</div>
+                <CardStats>
+                    <div>{isShipCard(card) ? '🚢' : '💥'}</div>
+                </CardStats>
             )}
         </CardContainer>
     );

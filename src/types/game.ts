@@ -1,42 +1,73 @@
-export type Suit = 'hearts' | 'diamonds' | 'clubs' | 'spades';
-export type Rank = 'A' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K';
+export type GunSize = 11 | 12.6 | 14 | 15 | 16 | 18;
 
-export interface Card {
-    suit: Suit;
-    rank: Rank;
+export interface ShipCard {
+    gunSize: GunSize;
+    hitPoints: number;
+    name: string;
+    faceUp: boolean;
+}
+
+export interface SalvoCard {
+    gunSize: GunSize;
+    damage: number;
     faceUp: boolean;
 }
 
 export interface Player {
     id: string;
     name: string;
-    hand: Card[];
-    playedCards: Card[];
+    ships: ShipCard[];
+    hand: SalvoCard[];
+    discardedSalvos: SalvoCard[];
 }
 
 export interface GameState {
     players: Player[];
-    deck: Card[];
-    discardPile: Card[];
+    shipDeck: ShipCard[];
+    playDeck: SalvoCard[];
     currentPlayerIndex: number;
     gameStarted: boolean;
 }
 
-export const createDeck = (): Card[] => {
-    const suits: Suit[] = ['hearts', 'diamonds', 'clubs', 'spades'];
-    const ranks: Rank[] = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K'];
-    const deck: Card[] = [];
-
-    for (const suit of suits) {
-        for (const rank of ranks) {
-            deck.push({ suit, rank, faceUp: false });
-        }
-    }
-
-    return shuffle(deck);
+export const createShipDeck = (): ShipCard[] => {
+    const ships: ShipCard[] = [
+        // 11-inch gun ships (10 cards)
+        ...Array(10).fill(null).map(() => ({ gunSize: 11 as GunSize, hitPoints: 3, name: "Light Cruiser", faceUp: false })),
+        // 12.6-inch gun ships (10 cards)
+        ...Array(10).fill(null).map(() => ({ gunSize: 12.6 as GunSize, hitPoints: 4, name: "Heavy Cruiser", faceUp: false })),
+        // 14-inch gun ships (12 cards)
+        ...Array(12).fill(null).map(() => ({ gunSize: 14 as GunSize, hitPoints: 5, name: "Battlecruiser", faceUp: false })),
+        // 15-inch gun ships (8 cards)
+        ...Array(8).fill(null).map(() => ({ gunSize: 15 as GunSize, hitPoints: 6, name: "Battleship", faceUp: false })),
+        // 16-inch gun ships (8 cards)
+        ...Array(8).fill(null).map(() => ({ gunSize: 16 as GunSize, hitPoints: 7, name: "Super Battleship", faceUp: false })),
+        // 18-inch gun ships (6 cards)
+        ...Array(6).fill(null).map(() => ({ gunSize: 18 as GunSize, hitPoints: 9, name: "Super Dreadnought", faceUp: false })),
+    ];
+    
+    return shuffle(ships);
 };
 
-export const shuffle = (deck: Card[]): Card[] => {
+export const createPlayDeck = (): SalvoCard[] => {
+    const salvos: SalvoCard[] = [
+        // 11-inch salvos (24 cards)
+        ...Array(24).fill(null).map(() => ({ gunSize: 11 as GunSize, damage: Math.floor(Math.random() * 2) + 1, faceUp: false })),
+        // 12.6-inch salvos (20 cards)
+        ...Array(20).fill(null).map(() => ({ gunSize: 12.6 as GunSize, damage: Math.floor(Math.random() * 2) + 1, faceUp: false })),
+        // 14-inch salvos (24 cards)
+        ...Array(24).fill(null).map(() => ({ gunSize: 14 as GunSize, damage: Math.floor(Math.random() * 3) + 1, faceUp: false })),
+        // 15-inch salvos (16 cards)
+        ...Array(16).fill(null).map(() => ({ gunSize: 15 as GunSize, damage: Math.floor(Math.random() * 3) + 2, faceUp: false })),
+        // 16-inch salvos (16 cards)
+        ...Array(16).fill(null).map(() => ({ gunSize: 16 as GunSize, damage: Math.floor(Math.random() * 3) + 2, faceUp: false })),
+        // 18-inch salvos (8 cards)
+        ...Array(8).fill(null).map(() => ({ gunSize: 18 as GunSize, damage: Math.floor(Math.random() * 2) + 3, faceUp: false })),
+    ];
+    
+    return shuffle(salvos);
+};
+
+export const shuffle = <T>(deck: T[]): T[] => {
     const newDeck = [...deck];
     for (let i = newDeck.length - 1; i > 0; i--) {
         const j = Math.floor(Math.random() * (i + 1));
@@ -45,19 +76,36 @@ export const shuffle = (deck: Card[]): Card[] => {
     return newDeck;
 };
 
-export const dealCards = (deck: Card[], numPlayers: number): { hands: Card[][], remainingDeck: Card[] } => {
-    const hands: Card[][] = Array(numPlayers).fill([]).map(() => []);
-    const remainingDeck = [...deck];
+export const dealInitialHands = (shipDeck: ShipCard[], playDeck: SalvoCard[], numPlayers: number): { 
+    playerShips: ShipCard[][],
+    playerHands: SalvoCard[][],
+    remainingShipDeck: ShipCard[],
+    remainingPlayDeck: SalvoCard[]
+} => {
+    const playerShips: ShipCard[][] = Array(numPlayers).fill([]).map(() => []);
+    const playerHands: SalvoCard[][] = Array(numPlayers).fill([]).map(() => []);
+    const remainingShipDeck = [...shipDeck];
+    const remainingPlayDeck = [...playDeck];
     
-    // Deal 10 cards to each player
-    for (let i = 0; i < 10; i++) {
+    // Deal 3 ships to each player
+    for (let i = 0; i < 3; i++) {
         for (let j = 0; j < numPlayers; j++) {
-            if (remainingDeck.length > 0) {
-                const card = remainingDeck.pop()!;
-                hands[j] = [...hands[j], { ...card, faceUp: true }];
+            if (remainingShipDeck.length > 0) {
+                const ship = remainingShipDeck.pop()!;
+                playerShips[j] = [...playerShips[j], { ...ship, faceUp: true }];
+            }
+        }
+    }
+    
+    // Deal 5 salvo cards to each player
+    for (let i = 0; i < 5; i++) {
+        for (let j = 0; j < numPlayers; j++) {
+            if (remainingPlayDeck.length > 0) {
+                const salvo = remainingPlayDeck.pop()!;
+                playerHands[j] = [...playerHands[j], { ...salvo, faceUp: true }];
             }
         }
     }
 
-    return { hands, remainingDeck };
+    return { playerShips, playerHands, remainingShipDeck, remainingPlayDeck };
 }; 

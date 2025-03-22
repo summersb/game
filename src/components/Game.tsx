@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import styled from '@emotion/styled';
-import { GameState, Player, createDeck, dealCards } from '../types/game';
+import { GameState, Player, ShipCard, SalvoCard, createShipDeck, createPlayDeck, dealInitialHands } from '../types/game';
 import PlayerHand from './PlayerHand';
 import Card from './Card';
 import { useTheme } from '../context/ThemeContext';
@@ -59,54 +59,98 @@ const Game: React.FC = () => {
     const { themeColors, toggleTheme, theme } = useTheme();
     const [gameState, setGameState] = useState<GameState>({
         players: [],
-        deck: [],
-        discardPile: [],
+        shipDeck: [],
+        playDeck: [],
         currentPlayerIndex: 0,
         gameStarted: false
     });
 
+    const [selectedShip, setSelectedShip] = useState<ShipCard | null>(null);
+
     const startGame = () => {
-        const deck = createDeck();
-        const { hands, remainingDeck } = dealCards(deck, 2); // Start with 2 players
+        const shipDeck = createShipDeck();
+        const playDeck = createPlayDeck();
+        const { playerShips, playerHands, remainingShipDeck, remainingPlayDeck } = dealInitialHands(shipDeck, playDeck, 2);
         
         const players: Player[] = [
-            { id: '1', name: 'Player 1', hand: hands[0], playedCards: [] },
-            { id: '2', name: 'Player 2', hand: hands[1], playedCards: [] }
+            { id: '1', name: 'Player 1', ships: playerShips[0], hand: playerHands[0], discardedSalvos: [] },
+            { id: '2', name: 'Player 2', ships: playerShips[1], hand: playerHands[1], discardedSalvos: [] }
         ];
 
         setGameState({
             players,
-            deck: remainingDeck,
-            discardPile: [],
+            shipDeck: remainingShipDeck,
+            playDeck: remainingPlayDeck,
             currentPlayerIndex: 0,
             gameStarted: true
         });
     };
 
-    const drawCard = () => {
-        if (gameState.deck.length === 0) return;
+    const drawSalvo = () => {
+        if (gameState.playDeck.length === 0) return;
 
         const newState = { ...gameState };
-        const drawnCard = newState.deck.pop()!;
+        const drawnCard = newState.playDeck.pop()!;
         drawnCard.faceUp = true;
 
         newState.players[newState.currentPlayerIndex].hand.push(drawnCard);
         setGameState(newState);
     };
 
-    const playCard = (cardIndex: number) => {
+    const playSalvo = (cardIndex: number) => {
+        if (!selectedShip) return;
+
         const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+        const targetPlayer = gameState.players[(gameState.currentPlayerIndex + 1) % 2];
+        const salvoCard = currentPlayer.hand[cardIndex];
+
+        // Check if the salvo matches the selected ship's gun size
+        if (salvoCard.gunSize !== selectedShip.gunSize) {
+            alert("Salvo gun size must match the target ship's gun size!");
+            return;
+        }
+
         const newState = { ...gameState };
         
-        const playedCard = currentPlayer.hand[cardIndex];
+        // Remove the salvo card from hand and add to discarded
         newState.players[gameState.currentPlayerIndex].hand = 
             currentPlayer.hand.filter((_, index) => index !== cardIndex);
-        newState.discardPile = [...newState.discardPile, playedCard];
-        
-        // Move to next player
-        newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % newState.players.length;
-        
+        newState.players[gameState.currentPlayerIndex].discardedSalvos.push(salvoCard);
+
+        // Apply damage to the ship
+        const shipIndex = targetPlayer.ships.findIndex(ship => ship === selectedShip);
+        if (shipIndex !== -1) {
+            const updatedShip = { ...selectedShip };
+            updatedShip.hitPoints -= salvoCard.damage;
+
+            if (updatedShip.hitPoints <= 0) {
+                // Remove the destroyed ship
+                newState.players[(gameState.currentPlayerIndex + 1) % 2].ships =
+                    targetPlayer.ships.filter((_, index) => index !== shipIndex);
+            } else {
+                // Update the damaged ship
+                newState.players[(gameState.currentPlayerIndex + 1) % 2].ships =
+                    targetPlayer.ships.map((ship, index) => 
+                        index === shipIndex ? updatedShip : ship
+                    );
+            }
+        }
+
+        // Check for game over
+        if (newState.players[(gameState.currentPlayerIndex + 1) % 2].ships.length === 0) {
+            alert(`${currentPlayer.name} wins!`);
+            newState.gameStarted = false;
+        } else {
+            // Move to next player
+            newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % 2;
+        }
+
         setGameState(newState);
+        setSelectedShip(null);
+    };
+
+    const selectShip = (ship: ShipCard) => {
+        setSelectedShip(ship === selectedShip ? null : ship);
     };
 
     return (
@@ -115,7 +159,12 @@ const Game: React.FC = () => {
                 {!gameState.gameStarted ? (
                     <Button themeColors={themeColors} onClick={startGame}>Start Game</Button>
                 ) : (
-                    <div /> // Empty div for spacing
+                    <div>
+                        Current Turn: {gameState.players[gameState.currentPlayerIndex].name}
+                        {selectedShip && (
+                            <span> - Target: {selectedShip.name}</span>
+                        )}
+                    </div>
                 )}
                 <Button themeColors={themeColors} onClick={toggleTheme}>
                     Switch to {theme === 'light' ? 'Dark' : 'Light'} Mode
@@ -123,29 +172,27 @@ const Game: React.FC = () => {
             </Controls>
             {gameState.gameStarted && (
                 <GameBoard>
-                    {gameState.players.map((player, index) => (
-                        <PlayerHand
-                            key={player.id}
-                            player={player}
-                            isCurrentPlayer={index === gameState.currentPlayerIndex}
-                            onCardClick={index === gameState.currentPlayerIndex ? playCard : undefined}
-                        />
-                    ))}
+                    <PlayerHand
+                        player={gameState.players[(gameState.currentPlayerIndex + 1) % 2]}
+                        isCurrentPlayer={false}
+                        onShipClick={selectShip}
+                        selectedShip={selectedShip}
+                    />
                     <CenterArea>
                         <DeckArea>
-                            {gameState.deck.length > 0 && (
+                            {gameState.playDeck.length > 0 && (
                                 <Card 
-                                    card={{ ...gameState.deck[gameState.deck.length - 1], faceUp: false }}
-                                    onClick={drawCard}
-                                />
-                            )}
-                            {gameState.discardPile.length > 0 && (
-                                <Card 
-                                    card={gameState.discardPile[gameState.discardPile.length - 1]}
+                                    card={{ gunSize: 11, damage: 0, faceUp: false } as SalvoCard}
+                                    onClick={drawSalvo}
                                 />
                             )}
                         </DeckArea>
                     </CenterArea>
+                    <PlayerHand
+                        player={gameState.players[gameState.currentPlayerIndex]}
+                        isCurrentPlayer={true}
+                        onSalvoClick={playSalvo}
+                    />
                 </GameBoard>
             )}
         </GameContainer>

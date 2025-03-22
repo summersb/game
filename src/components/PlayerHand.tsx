@@ -1,5 +1,5 @@
 import styled from '@emotion/styled';
-import { Player } from '../types/game';
+import { Player, ShipCard } from '../types/game';
 import Card from './Card';
 import { useTheme } from '../context/ThemeContext';
 
@@ -21,13 +21,30 @@ const CardsContainer = styled.div`
     flex-wrap: wrap;
 `;
 
+const Section = styled.div`
+    margin: 10px 0;
+`;
+
+const SectionTitle = styled.h4<{ themeColors: any }>`
+    color: ${props => props.themeColors.text};
+    margin: 5px 0;
+`;
+
 interface PlayerHandProps {
     player: Player;
     isCurrentPlayer: boolean;
-    onCardClick?: (cardIndex: number) => void;
+    onShipClick?: (ship: ShipCard) => void;
+    onSalvoClick?: (cardIndex: number) => void;
+    selectedShip?: ShipCard | null;
 }
 
-const PlayerHand: React.FC<PlayerHandProps> = ({ player, isCurrentPlayer, onCardClick }) => {
+const PlayerHand: React.FC<PlayerHandProps> = ({ 
+    player, 
+    isCurrentPlayer, 
+    onShipClick,
+    onSalvoClick,
+    selectedShip 
+}) => {
     const { themeColors } = useTheme();
     
     return (
@@ -35,15 +52,32 @@ const PlayerHand: React.FC<PlayerHandProps> = ({ player, isCurrentPlayer, onCard
             <PlayerName themeColors={themeColors}>
                 {player.name} {isCurrentPlayer ? '(Your Turn)' : ''}
             </PlayerName>
-            <CardsContainer>
-                {player.hand.map((card, index) => (
-                    <Card
-                        key={`${card.suit}-${card.rank}-${index}`}
-                        card={card}
-                        onClick={() => onCardClick && onCardClick(index)}
-                    />
-                ))}
-            </CardsContainer>
+            <Section>
+                <SectionTitle themeColors={themeColors}>Ships</SectionTitle>
+                <CardsContainer>
+                    {player.ships.map((ship, index) => (
+                        <Card
+                            key={`ship-${index}`}
+                            card={ship}
+                            onClick={() => onShipClick && !isCurrentPlayer && onShipClick(ship)}
+                        />
+                    ))}
+                </CardsContainer>
+            </Section>
+            {isCurrentPlayer && (
+                <Section>
+                    <SectionTitle themeColors={themeColors}>Salvos</SectionTitle>
+                    <CardsContainer>
+                        {player.hand.map((salvo, index) => (
+                            <Card
+                                key={`salvo-${index}`}
+                                card={salvo}
+                                onClick={() => onSalvoClick && selectedShip && onSalvoClick(index)}
+                            />
+                        ))}
+                    </CardsContainer>
+                </Section>
+            )}
         </HandContainer>
     );
 };

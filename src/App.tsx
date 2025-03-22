@@ -20,7 +20,7 @@ const ThemedApp = () => {
   
   return (
     <AppContainer themeColors={themeColors}>
-      <Title themeColors={themeColors}>Card Game</Title>
+      <Title themeColors={themeColors}>Naval Combat Card Game</Title>
       <Game />
     </AppContainer>
   );
