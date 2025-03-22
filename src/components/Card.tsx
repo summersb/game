@@ -2,7 +2,7 @@ import styled from '@emotion/styled';
 import { ShipCard, SalvoCard } from '../types/game';
 import { useTheme } from '../context/ThemeContext';
 
-const CardContainer = styled.div<{ faceUp: boolean; themeColors: any }>`
+const CardContainer = styled.div<{ faceUp: boolean; themeColors: any; disabled?: boolean }>`
     width: 120px;
     height: 180px;
     border: 1px solid ${props => props.themeColors.cardText}33;
@@ -10,15 +10,22 @@ const CardContainer = styled.div<{ faceUp: boolean; themeColors: any }>`
     display: flex;
     flex-direction: column;
     padding: 10px;
-    background-color: ${props => props.faceUp ? props.themeColors.cardBackground : props.themeColors.buttonBackground};
-    color: ${props => props.faceUp ? props.themeColors.cardText : props.themeColors.buttonText};
-    cursor: pointer;
+    background-color: ${props => {
+        if (props.disabled) return props.themeColors.handBackground;
+        return props.faceUp ? props.themeColors.cardBackground : props.themeColors.buttonBackground;
+    }};
+    color: ${props => {
+        if (props.disabled) return props.themeColors.cardText + '66';
+        return props.faceUp ? props.themeColors.cardText : props.themeColors.buttonText;
+    }};
+    cursor: ${props => props.disabled ? 'not-allowed' : 'pointer'};
     user-select: none;
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
     transition: transform 0.2s ease;
+    opacity: ${props => props.disabled ? 0.6 : 1};
 
     &:hover {
-        transform: translateY(-5px);
+        transform: ${props => props.disabled ? 'none' : 'translateY(-5px)'};
     }
 `;
 
@@ -48,20 +55,28 @@ const StatLine = styled.div`
 interface CardProps {
     card: ShipCard | SalvoCard;
     onClick?: () => void;
+    disabled?: boolean;
 }
 
 const isShipCard = (card: ShipCard | SalvoCard): card is ShipCard => {
     return 'hitPoints' in card;
 };
 
-const Card: React.FC<CardProps> = ({ card, onClick }) => {
+const Card: React.FC<CardProps> = ({ card, onClick, disabled }) => {
     const { themeColors } = useTheme();
+
+    const handleClick = () => {
+        if (!disabled && onClick) {
+            onClick();
+        }
+    };
 
     return (
         <CardContainer 
             faceUp={card.faceUp} 
-            onClick={onClick}
+            onClick={handleClick}
             themeColors={themeColors}
+            disabled={disabled}
         >
             {card.faceUp ? (
                 <>
