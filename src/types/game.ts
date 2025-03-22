@@ -28,6 +28,7 @@ export interface GameState {
     players: Player[];
     shipDeck: ShipCard[];
     playDeck: SalvoCard[];
+    discardPile: SalvoCard[];
     currentPlayerIndex: number;
     gameStarted: boolean;
 }
@@ -130,16 +131,17 @@ export const dealInitialHands = (shipDeck: ShipCard[], playDeck: SalvoCard[], nu
     remainingPlayDeck: SalvoCard[]
 } => {
     const playerShips: ShipCard[][] = Array(numPlayers).fill([]).map(() => []);
+    const playerPlayedShips: ShipCard[][] = Array(numPlayers).fill([]).map(() => []);
     const playerHands: SalvoCard[][] = Array(numPlayers).fill([]).map(() => []);
     const remainingShipDeck = [...shipDeck];
     const remainingPlayDeck = [...playDeck];
     
-    // Deal 5 ships to each player
+    // Deal 5 ships to each player's battle line
     for (let i = 0; i < 5; i++) {
         for (let j = 0; j < numPlayers; j++) {
             if (remainingShipDeck.length > 0) {
                 const ship = remainingShipDeck.pop()!;
-                playerShips[j] = [...playerShips[j], { ...ship, faceUp: true }];
+                playerPlayedShips[j] = [...playerPlayedShips[j], { ...ship, faceUp: true }];
             }
         }
     }
@@ -154,5 +156,10 @@ export const dealInitialHands = (shipDeck: ShipCard[], playDeck: SalvoCard[], nu
         }
     }
 
-    return { playerShips, playerHands, remainingShipDeck, remainingPlayDeck };
+    return { 
+        playerShips: playerPlayedShips, // Return played ships instead of unplayed ships
+        playerHands, 
+        remainingShipDeck, 
+        remainingPlayDeck 
+    };
 }; 

@@ -27,6 +27,27 @@ const CenterArea = styled.div`
 const DeckArea = styled.div`
     display: flex;
     gap: 20px;
+    align-items: center;
+`;
+
+const DeckLabel = styled.div<{ themeColors: any }>`
+    color: ${props => props.themeColors.text};
+    font-size: 0.9em;
+    text-align: center;
+    margin-top: 5px;
+`;
+
+const DeckStack = styled.div`
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    position: relative;
+`;
+
+const DiscardPile = styled.div`
+    position: relative;
+    min-width: 120px;
+    min-height: 180px;
 `;
 
 const Button = styled.button<{ themeColors: any }>`
@@ -70,11 +91,12 @@ const Game: React.FC = () => {
         players: [],
         shipDeck: [],
         playDeck: [],
+        discardPile: [],
         currentPlayerIndex: 0,
         gameStarted: false
     });
 
-    const [selectedShip, setSelectedShip] = useState<ShipCard | null>(null);
+    const [selectedSalvo, setSelectedSalvo] = useState<{card: SalvoCard, index: number} | null>(null);
 
     const startGame = () => {
         const shipDeck = createShipDeck();
@@ -86,17 +108,17 @@ const Game: React.FC = () => {
             { 
                 id: '1', 
                 name: 'Player 1', 
-                ships: playerShips[0].map(ship => ({ ...ship, faceUp: devMode || ship.faceUp })), 
+                ships: [], // Start with empty ships array
                 hand: playerHands[0].map(card => ({ ...card, faceUp: devMode || card.faceUp })), 
-                playedShips: [], 
+                playedShips: playerShips[0].map(ship => ({ ...ship, faceUp: devMode || ship.faceUp })), // Place initial ships here
                 discardedSalvos: [] 
             },
             { 
                 id: '2', 
                 name: 'Player 2', 
-                ships: playerShips[1].map(ship => ({ ...ship, faceUp: devMode || ship.faceUp })), 
+                ships: [], // Start with empty ships array
                 hand: playerHands[1].map(card => ({ ...card, faceUp: devMode || card.faceUp })), 
-                playedShips: [], 
+                playedShips: playerShips[1].map(ship => ({ ...ship, faceUp: devMode || ship.faceUp })), // Place initial ships here
                 discardedSalvos: [] 
             }
         ];
@@ -105,6 +127,7 @@ const Game: React.FC = () => {
             players,
             shipDeck: remainingShipDeck.map(ship => ({ ...ship, faceUp: devMode || ship.faceUp })),
             playDeck: remainingPlayDeck.map(card => ({ ...card, faceUp: devMode || card.faceUp })),
+            discardPile: [],
             currentPlayerIndex: 0,
             gameStarted: true
         });
@@ -121,60 +144,49 @@ const Game: React.FC = () => {
         setGameState(newState);
     };
 
-    const playCard = (cardIndex: number) => {
-        const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+    const drawShip = () => {
+        if (gameState.shipDeck.length === 0) return;
+
         const newState = { ...gameState };
+        const drawnShip = newState.shipDeck.pop()!;
+        drawnShip.faceUp = devMode || true; // Make ship face up in dev mode
 
-        // Check if we're playing a ship from hand
-        if (cardIndex < currentPlayer.ships.length) {
-            const ship = currentPlayer.ships[cardIndex];
-            
-            // Move ship from hand to played ships
-            newState.players[gameState.currentPlayerIndex].ships = 
-                currentPlayer.ships.filter((_, index) => index !== cardIndex);
-            newState.players[gameState.currentPlayerIndex].playedShips.push(ship);
-            
-            // Move to next player
-            newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % 2;
-            setGameState(newState);
-            setSelectedShip(null);
+        newState.players[newState.currentPlayerIndex].ships.push(drawnShip);
+        setGameState(newState);
+    };
+
+    const selectSalvo = (salvo: SalvoCard, index: number) => {
+        setSelectedSalvo(selectedSalvo?.card === salvo ? null : {card: salvo, index});
+    };
+
+    const selectShip = (ship: ShipCard) => {
+        if (!selectedSalvo) {
+            alert("Please select a salvo card first!");
             return;
         }
 
-        // Playing a salvo card
-        const salvoIndex = cardIndex - currentPlayer.ships.length;
-        const salvo = currentPlayer.hand[salvoIndex];
-
-        if (!selectedShip) {
-            alert("Please select a target ship first!");
-            return;
-        }
-
-        // Check if trying to target a carrier when other ships exist
         const targetPlayer = gameState.players[(gameState.currentPlayerIndex + 1) % 2];
         const normalShips = targetPlayer.playedShips.filter(s => s.type === 'normal');
-        if (selectedShip.type === 'carrier' && normalShips.length > 0) {
+
+        // Only allow targeting carriers if no other ships remain
+        if (ship.type === 'carrier' && normalShips.length > 0) {
             alert("Cannot target Aircraft Carriers while other ships remain!");
             return;
         }
 
-        // Check if the salvo matches the selected ship's gun size
-        if (salvo.gunSize !== selectedShip.gunSize) {
-            alert("Salvo gun size must match the target ship's gun size!");
-            return;
-        }
-
-        // Remove the salvo card from hand and add to discarded
-        newState.players[gameState.currentPlayerIndex].hand = 
-            currentPlayer.hand.filter((_, index) => index !== salvoIndex);
-        newState.players[gameState.currentPlayerIndex].discardedSalvos.push(salvo);
-
-        // Find the target ship in the opponent's played ships
-        const shipIndex = targetPlayer.playedShips.findIndex(ship => ship === selectedShip);
+        // Apply damage and handle the salvo card
+        const newState = { ...gameState };
+        const currentPlayer = newState.players[newState.currentPlayerIndex];
         
+        // Remove the salvo from hand and add to discard pile
+        currentPlayer.hand = currentPlayer.hand.filter((_, idx) => idx !== selectedSalvo.index);
+        newState.discardPile.push(selectedSalvo.card);
+
+        // Find and update the target ship
+        const shipIndex = targetPlayer.playedShips.findIndex(s => s === ship);
         if (shipIndex !== -1) {
-            const updatedShip = { ...selectedShip };
-            updatedShip.hitPoints -= salvo.damage;
+            const updatedShip = { ...ship };
+            updatedShip.hitPoints -= selectedSalvo.card.damage;
 
             if (updatedShip.hitPoints <= 0) {
                 // Remove the destroyed ship
@@ -183,13 +195,13 @@ const Game: React.FC = () => {
             } else {
                 // Update the damaged ship
                 newState.players[(gameState.currentPlayerIndex + 1) % 2].playedShips =
-                    targetPlayer.playedShips.map((ship, index) => 
-                        index === shipIndex ? updatedShip : ship
+                    targetPlayer.playedShips.map((s, index) => 
+                        index === shipIndex ? updatedShip : s
                     );
             }
         }
 
-        // Check for game over - now includes checking both normal ships and carriers
+        // Check for game over
         const remainingShips = newState.players[(gameState.currentPlayerIndex + 1) % 2].playedShips;
         if (remainingShips.length === 0) {
             alert(`${currentPlayer.name} wins!`);
@@ -200,20 +212,33 @@ const Game: React.FC = () => {
         }
 
         setGameState(newState);
-        setSelectedShip(null);
+        setSelectedSalvo(null);
     };
 
-    const selectShip = (ship: ShipCard) => {
-        const targetPlayer = gameState.players[(gameState.currentPlayerIndex + 1) % 2];
-        const normalShips = targetPlayer.playedShips.filter(s => s.type === 'normal');
+    const playCard = (cardIndex: number) => {
+        const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
-        // Only allow targeting carriers if no other ships remain
-        if (ship.type === 'carrier' && normalShips.length > 0) {
-            alert("Cannot target Aircraft Carriers while other ships remain!");
+        // Check if we're playing a ship from hand
+        if (cardIndex < currentPlayer.ships.length) {
+            const ship = currentPlayer.ships[cardIndex];
+            
+            // Move ship from hand to played ships
+            const newState = { ...gameState };
+            newState.players[gameState.currentPlayerIndex].ships = 
+                currentPlayer.ships.filter((_, index) => index !== cardIndex);
+            newState.players[gameState.currentPlayerIndex].playedShips.push(ship);
+            
+            // Move to next player
+            newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % 2;
+            setGameState(newState);
+            setSelectedSalvo(null);
             return;
         }
 
-        setSelectedShip(ship === selectedShip ? null : ship);
+        // If it's a salvo card, select it
+        const salvoIndex = cardIndex - currentPlayer.ships.length;
+        const salvo = currentPlayer.hand[salvoIndex];
+        selectSalvo(salvo, salvoIndex);
     };
 
     // Add function to toggle dev mode
@@ -247,8 +272,8 @@ const Game: React.FC = () => {
                 ) : (
                     <div>
                         Current Turn: {gameState.players[gameState.currentPlayerIndex].name}
-                        {selectedShip && (
-                            <span> - Target: {selectedShip.name}</span>
+                        {selectedSalvo && (
+                            <span> - Selected: {selectedSalvo.card.gunSize}" Salvo</span>
                         )}
                     </div>
                 )}
@@ -273,22 +298,63 @@ const Game: React.FC = () => {
                         player={gameState.players[(gameState.currentPlayerIndex + 1) % 2]}
                         isCurrentPlayer={false}
                         onShipClick={selectShip}
-                        selectedShip={selectedShip}
+                        selectedSalvo={selectedSalvo?.card}
+                        devMode={devMode}
                     />
                     <CenterArea>
                         <DeckArea>
-                            {gameState.playDeck.length > 0 && (
-                                <Card 
-                                    card={{ gunSize: 11, damage: 0, faceUp: devMode } as SalvoCard}
-                                    onClick={drawSalvo}
-                                />
-                            )}
+                            <DeckStack>
+                                {gameState.shipDeck.length > 0 && (
+                                    <>
+                                        <Card 
+                                            card={{ 
+                                                gunSize: 14, 
+                                                hitPoints: 5, 
+                                                name: "Ship", 
+                                                faceUp: devMode,
+                                                type: 'normal'
+                                            } as ShipCard}
+                                            onClick={drawShip}
+                                        />
+                                        <DeckLabel themeColors={themeColors}>
+                                            Harbor ({gameState.shipDeck.length})
+                                        </DeckLabel>
+                                    </>
+                                )}
+                            </DeckStack>
+                            <DeckStack>
+                                {gameState.playDeck.length > 0 && (
+                                    <>
+                                        <Card 
+                                            card={{ gunSize: 11, damage: 0, faceUp: devMode } as SalvoCard}
+                                            onClick={drawSalvo}
+                                        />
+                                        <DeckLabel themeColors={themeColors}>
+                                            Salvos ({gameState.playDeck.length})
+                                        </DeckLabel>
+                                    </>
+                                )}
+                            </DeckStack>
+                            <DeckStack>
+                                {gameState.discardPile.length > 0 && (
+                                    <>
+                                        <Card 
+                                            card={gameState.discardPile[gameState.discardPile.length - 1]}
+                                        />
+                                        <DeckLabel themeColors={themeColors}>
+                                            Discard ({gameState.discardPile.length})
+                                        </DeckLabel>
+                                    </>
+                                )}
+                            </DeckStack>
                         </DeckArea>
                     </CenterArea>
                     <PlayerHand
                         player={gameState.players[gameState.currentPlayerIndex]}
                         isCurrentPlayer={true}
                         onCardClick={playCard}
+                        selectedSalvo={selectedSalvo?.card}
+                        devMode={devMode}
                     />
                 </GameBoard>
             )}

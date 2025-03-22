@@ -3,7 +3,21 @@ import { Player, ShipCard, SalvoCard } from '../types/game';
 import Card from './Card';
 import { useTheme } from '../context/ThemeContext';
 
-const HandContainer = styled.div<{ themeColors: any }>`
+const PlayerContainer = styled.div<{ themeColors: any }>`
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    width: 100%;
+`;
+
+const BattleArea = styled.div<{ themeColors: any }>`
+    padding: 20px;
+    background-color: ${props => props.themeColors.handBackground};
+    border-radius: 12px;
+    margin: 10px;
+`;
+
+const PlayArea = styled.div<{ themeColors: any }>`
     padding: 20px;
     background-color: ${props => props.themeColors.handBackground};
     border-radius: 12px;
@@ -48,7 +62,8 @@ interface PlayerHandProps {
     isCurrentPlayer: boolean;
     onShipClick?: (ship: ShipCard) => void;
     onCardClick?: (cardIndex: number) => void;
-    selectedShip?: ShipCard | null;
+    selectedSalvo?: SalvoCard | null;
+    devMode: boolean;
 }
 
 const PlayerHand: React.FC<PlayerHandProps> = ({ 
@@ -56,74 +71,62 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
     isCurrentPlayer, 
     onShipClick,
     onCardClick,
-    selectedShip 
+    selectedSalvo,
+    devMode 
 }) => {
     const { themeColors } = useTheme();
     
-    // Separate normal ships and carriers
-    const normalShips = player.playedShips.filter(ship => ship.type === 'normal');
-    const carriers = player.playedShips.filter(ship => ship.type === 'carrier');
-    const normalShipsInHand = player.ships.filter(ship => ship.type === 'normal');
-    const carriersInHand = player.ships.filter(ship => ship.type === 'carrier');
+    // Separate normal ships and carriers and sort by gun size
+    const normalShips = player.playedShips
+        .filter(ship => ship.type === 'normal')
+        .sort((a, b) => b.gunSize - a.gunSize);
+    const carriers = player.playedShips
+        .filter(ship => ship.type === 'carrier')
+        .sort((a, b) => b.gunSize - a.gunSize);
+    
+    // Get all unique gun sizes from deployed ships
+    const deployedGunSizes = new Set(player.playedShips.map(ship => ship.gunSize));
+
+    // Function to check if a salvo can be used
+    const canUseSalvo = (salvo: SalvoCard) => {
+        return deployedGunSizes.has(salvo.gunSize);
+    };
+
+    // Sort undeployed ships by gun size
+    const sortedUndeployedShips = [...player.ships].sort((a, b) => b.gunSize - a.gunSize);
+
+    // Only show play area if it's the current player or dev mode is on
+    const showPlayArea = isCurrentPlayer || devMode;
     
     return (
-        <HandContainer themeColors={themeColors}>
+        <PlayerContainer themeColors={themeColors}>
             <PlayerName themeColors={themeColors}>
                 {player.name} {isCurrentPlayer ? '(Your Turn)' : ''}
+                {selectedSalvo && isCurrentPlayer && (
+                    <span style={{ fontSize: '0.8em', marginLeft: '10px' }}>
+                        (Selected: {selectedSalvo.gunSize}" Salvo)
+                    </span>
+                )}
             </PlayerName>
-            <Section>
-                <SectionTitle themeColors={themeColors}>
-                    Battle Line Ships
-                </SectionTitle>
-                <SubSection>
-                    <SubSectionTitle themeColors={themeColors}>In Hand</SubSectionTitle>
-                    <CardsContainer>
-                        {normalShipsInHand.map((ship, index) => (
-                            <Card
-                                key={`hand-ship-${index}`}
-                                card={ship}
-                                onClick={() => {
-                                    if (!isCurrentPlayer) return;
-                                    onCardClick && onCardClick(player.ships.indexOf(ship));
-                                }}
-                            />
-                        ))}
-                    </CardsContainer>
-                </SubSection>
-                <SubSection>
-                    <SubSectionTitle themeColors={themeColors}>Deployed</SubSectionTitle>
+
+            {/* Battle Area - Contains all deployed ships */}
+            <BattleArea themeColors={themeColors}>
+                <SectionTitle themeColors={themeColors}>Battle Line</SectionTitle>
+                <Section>
+                    <SubSectionTitle themeColors={themeColors}>Normal Ships</SubSectionTitle>
                     <CardsContainer>
                         {normalShips.map((ship, index) => (
                             <Card
                                 key={`deployed-ship-${index}`}
                                 card={ship}
                                 onClick={() => onShipClick && !isCurrentPlayer && onShipClick(ship)}
+                                disabled={!isCurrentPlayer || !selectedSalvo}
                             />
                         ))}
                     </CardsContainer>
-                </SubSection>
-            </Section>
-            <Section>
-                <SectionTitle themeColors={themeColors}>
-                    Aircraft Carriers
-                </SectionTitle>
-                <SubSection>
-                    <SubSectionTitle themeColors={themeColors}>In Hand</SubSectionTitle>
-                    <CardsContainer>
-                        {carriersInHand.map((ship, index) => (
-                            <Card
-                                key={`hand-carrier-${index}`}
-                                card={ship}
-                                onClick={() => {
-                                    if (!isCurrentPlayer) return;
-                                    onCardClick && onCardClick(player.ships.indexOf(ship));
-                                }}
-                            />
-                        ))}
-                    </CardsContainer>
-                </SubSection>
-                <SubSection>
-                    <SubSectionTitle themeColors={themeColors}>Deployed</SubSectionTitle>
+                </Section>
+                <Section>
+                    <SubSectionTitle themeColors={themeColors}>Aircraft Carriers</SubSectionTitle>
                     <CardsContainer>
                         {carriers.map((ship, index) => (
                             <Card
@@ -136,31 +139,63 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                                         alert("Cannot target Aircraft Carriers while other ships remain!");
                                     }
                                 }}
+                                disabled={!isCurrentPlayer || !selectedSalvo || normalShips.length > 0}
                             />
                         ))}
                     </CardsContainer>
-                </SubSection>
-            </Section>
-            <Section>
-                <SectionTitle themeColors={themeColors}>Salvos</SectionTitle>
-                <CardsContainer>
-                    {player.hand.map((salvo, index) => (
-                        <Card
-                            key={`salvo-${index}`}
-                            card={salvo}
-                            onClick={() => {
-                                if (!isCurrentPlayer) return;
-                                if (!selectedShip && onCardClick) {
-                                    alert("Please select a target ship first!");
-                                    return;
-                                }
-                                onCardClick && onCardClick(player.ships.length + index);
-                            }}
-                        />
-                    ))}
-                </CardsContainer>
-            </Section>
-        </HandContainer>
+                </Section>
+            </BattleArea>
+
+            {/* Play Area - Contains salvo cards and undeployed ships */}
+            {showPlayArea && (
+                <PlayArea themeColors={themeColors}>
+                    <SectionTitle themeColors={themeColors}>Play Cards</SectionTitle>
+                    <Section>
+                        <SubSectionTitle themeColors={themeColors}>Undeployed Ships</SubSectionTitle>
+                        <CardsContainer>
+                            {sortedUndeployedShips.map((ship, index) => (
+                                <Card
+                                    key={`hand-ship-${index}`}
+                                    card={ship}
+                                    onClick={() => {
+                                        if (!isCurrentPlayer) return;
+                                        onCardClick && onCardClick(player.ships.indexOf(ship));
+                                    }}
+                                    disabled={!isCurrentPlayer || selectedSalvo !== null}
+                                />
+                            ))}
+                        </CardsContainer>
+                    </Section>
+                    <Section>
+                        <SubSectionTitle themeColors={themeColors}>
+                            Salvo Cards 
+                            {isCurrentPlayer && (
+                                <span style={{ fontSize: '0.8em', marginLeft: '10px' }}>
+                                    (Must match your deployed ship gun size)
+                                </span>
+                            )}
+                        </SubSectionTitle>
+                        <CardsContainer>
+                            {player.hand.map((salvo, index) => (
+                                <Card
+                                    key={`salvo-${index}`}
+                                    card={salvo}
+                                    disabled={!isCurrentPlayer || !canUseSalvo(salvo)}
+                                    onClick={() => {
+                                        if (!isCurrentPlayer) return;
+                                        if (!canUseSalvo(salvo)) {
+                                            alert("You must have a deployed ship with matching gun size to use this salvo!");
+                                            return;
+                                        }
+                                        onCardClick && onCardClick(player.ships.length + index);
+                                    }}
+                                />
+                            ))}
+                        </CardsContainer>
+                    </Section>
+                </PlayArea>
+            )}
+        </PlayerContainer>
     );
 };
 
