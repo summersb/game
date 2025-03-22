@@ -84,6 +84,22 @@ const DevControls = styled.div`
     margin-left: 20px;
 `;
 
+const EmptyCard = styled.div<{ themeColors: any }>`
+    width: 120px;
+    height: 180px;
+    border: 2px dashed ${props => props.themeColors.text};
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    
+    &:disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+    }
+`;
+
 const Game: React.FC = () => {
     const { themeColors, toggleTheme, theme } = useTheme();
     const [devMode, setDevMode] = useState(false);
@@ -97,6 +113,8 @@ const Game: React.FC = () => {
     });
 
     const [selectedSalvo, setSelectedSalvo] = useState<{card: SalvoCard, index: number} | null>(null);
+    const [hasDrawnCard, setHasDrawnCard] = useState(false);
+    const [isDiscarding, setIsDiscarding] = useState(false);
 
     const startGame = () => {
         const shipDeck = createShipDeck();
@@ -111,7 +129,8 @@ const Game: React.FC = () => {
                 ships: [], // Start with empty ships array
                 hand: playerHands[0].map(card => ({ ...card, faceUp: devMode || card.faceUp })), 
                 playedShips: playerShips[0].map(ship => ({ ...ship, faceUp: devMode || ship.faceUp })), // Place initial ships here
-                discardedSalvos: [] 
+                discardedSalvos: [],
+                deepSixPile: []
             },
             { 
                 id: '2', 
@@ -119,7 +138,8 @@ const Game: React.FC = () => {
                 ships: [], // Start with empty ships array
                 hand: playerHands[1].map(card => ({ ...card, faceUp: devMode || card.faceUp })), 
                 playedShips: playerShips[1].map(ship => ({ ...ship, faceUp: devMode || ship.faceUp })), // Place initial ships here
-                discardedSalvos: [] 
+                discardedSalvos: [],
+                deepSixPile: []
             }
         ];
 
@@ -131,17 +151,29 @@ const Game: React.FC = () => {
             currentPlayerIndex: 0,
             gameStarted: true
         });
+        setHasDrawnCard(false); // Initialize hasDrawnCard state
     };
 
     const drawSalvo = () => {
-        if (gameState.playDeck.length === 0) return;
+        if (gameState.playDeck.length === 0) {
+            // If play deck is empty, shuffle discard pile back in
+            if (gameState.discardPile.length === 0) {
+                alert("No cards left to draw!");
+                return;
+            }
+            const newState = { ...gameState };
+            newState.playDeck = [...gameState.discardPile].map(card => ({ ...card, faceUp: false }));
+            newState.discardPile = [];
+            setGameState(newState);
+        }
 
         const newState = { ...gameState };
         const drawnCard = newState.playDeck.pop()!;
-        drawnCard.faceUp = devMode || true; // Make card face up in dev mode
+        drawnCard.faceUp = devMode || true;
 
         newState.players[newState.currentPlayerIndex].hand.push(drawnCard);
         setGameState(newState);
+        setHasDrawnCard(true);
     };
 
     const drawShip = () => {
@@ -156,10 +188,70 @@ const Game: React.FC = () => {
     };
 
     const selectSalvo = (salvo: SalvoCard, index: number) => {
+        // If we're discarding, always allow selection
+        if (isDiscarding) {
+            setSelectedSalvo(selectedSalvo?.card === salvo ? null : {card: salvo, index});
+            return;
+        }
+
+        // For targeting, check if the salvo's gun size matches any deployed ship
+        const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+        const hasMatchingShip = currentPlayer.playedShips.some(ship => ship.gunSize === salvo.gunSize);
+        
+        if (!hasMatchingShip) {
+            alert("You must have a ship with matching gun size to fire this salvo!");
+            return;
+        }
+
         setSelectedSalvo(selectedSalvo?.card === salvo ? null : {card: salvo, index});
     };
 
+    const discardSalvo = () => {
+        if (!hasDrawnCard) {
+            alert("You must draw a card at the start of your turn!");
+            return;
+        }
+
+        // If not discarding, enter discard mode
+        if (!isDiscarding) {
+            setIsDiscarding(true);
+            setSelectedSalvo(null);
+            return;
+        }
+
+        // If discarding but no salvo selected, show message
+        if (!selectedSalvo) {
+            alert("Please select a salvo card to discard!");
+            return;
+        }
+
+        const newState = { ...gameState };
+        const currentPlayer = newState.players[newState.currentPlayerIndex];
+        
+        // Remove the salvo from hand and add to discard pile
+        const updatedHand = [...currentPlayer.hand];
+        const discardedCard = updatedHand.splice(selectedSalvo.index, 1)[0];
+        
+        newState.players[newState.currentPlayerIndex].hand = updatedHand;
+        newState.discardPile.push(discardedCard);
+
+        // Move to next player
+        newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % 2;
+        setGameState(newState);
+        setSelectedSalvo(null);
+        setHasDrawnCard(false);
+        setIsDiscarding(false);
+    };
+
     const selectShip = (ship: ShipCard) => {
+        // Cancel discarding mode if trying to target a ship
+        setIsDiscarding(false);
+
+        if (!hasDrawnCard) {
+            alert("You must draw a card at the start of your turn!");
+            return;
+        }
+
         if (!selectedSalvo) {
             alert("Please select a salvo card first!");
             return;
@@ -189,9 +281,12 @@ const Game: React.FC = () => {
             updatedShip.hitPoints -= selectedSalvo.card.damage;
 
             if (updatedShip.hitPoints <= 0) {
-                // Remove the destroyed ship
+                // Remove the destroyed ship and add it to the current player's deep six pile
                 newState.players[(gameState.currentPlayerIndex + 1) % 2].playedShips =
                     targetPlayer.playedShips.filter((_, index) => index !== shipIndex);
+                // Make the sunken ship face up and add it to the deep six pile
+                updatedShip.faceUp = true;
+                newState.players[gameState.currentPlayerIndex].deepSixPile.push(updatedShip);
             } else {
                 // Update the damaged ship
                 newState.players[(gameState.currentPlayerIndex + 1) % 2].playedShips =
@@ -209,6 +304,7 @@ const Game: React.FC = () => {
         } else {
             // Move to next player
             newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % 2;
+            setHasDrawnCard(false);
         }
 
         setGameState(newState);
@@ -216,6 +312,14 @@ const Game: React.FC = () => {
     };
 
     const playCard = (cardIndex: number) => {
+        // Cancel discarding mode if playing a card
+        setIsDiscarding(false);
+
+        if (!hasDrawnCard && gameState.gameStarted) {
+            alert("You must draw a card at the start of your turn!");
+            return;
+        }
+
         const currentPlayer = gameState.players[gameState.currentPlayerIndex];
 
         // Check if we're playing a ship from hand
@@ -232,6 +336,7 @@ const Game: React.FC = () => {
             newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % 2;
             setGameState(newState);
             setSelectedSalvo(null);
+            setHasDrawnCard(false);
             return;
         }
 
@@ -255,7 +360,8 @@ const Game: React.FC = () => {
                     ships: player.ships.map(ship => ({ ...ship, faceUp: newDevMode || ship.faceUp })),
                     hand: player.hand.map(card => ({ ...card, faceUp: newDevMode || card.faceUp })),
                     playedShips: player.playedShips.map(ship => ({ ...ship, faceUp: newDevMode || ship.faceUp })),
-                    discardedSalvos: player.discardedSalvos.map(card => ({ ...card, faceUp: newDevMode || card.faceUp }))
+                    discardedSalvos: player.discardedSalvos.map(card => ({ ...card, faceUp: newDevMode || card.faceUp })),
+                    deepSixPile: player.deepSixPile.map(ship => ({ ...ship, faceUp: newDevMode || ship.faceUp }))
                 })),
                 shipDeck: gameState.shipDeck.map(ship => ({ ...ship, faceUp: newDevMode || ship.faceUp })),
                 playDeck: gameState.playDeck.map(card => ({ ...card, faceUp: newDevMode || card.faceUp }))
@@ -272,6 +378,8 @@ const Game: React.FC = () => {
                 ) : (
                     <div>
                         Current Turn: {gameState.players[gameState.currentPlayerIndex].name}
+                        {!hasDrawnCard && <span style={{ color: 'red' }}> - Draw a card to start your turn!</span>}
+                        {isDiscarding && <span style={{ color: 'blue' }}> - Select a salvo to discard</span>}
                         {selectedSalvo && (
                             <span> - Selected: {selectedSalvo.card.gunSize}" Salvo</span>
                         )}
@@ -328,6 +436,7 @@ const Game: React.FC = () => {
                                         <Card 
                                             card={{ gunSize: 11, damage: 0, faceUp: devMode } as SalvoCard}
                                             onClick={drawSalvo}
+                                            disabled={hasDrawnCard}
                                         />
                                         <DeckLabel themeColors={themeColors}>
                                             Salvos ({gameState.playDeck.length})
@@ -336,16 +445,24 @@ const Game: React.FC = () => {
                                 )}
                             </DeckStack>
                             <DeckStack>
-                                {gameState.discardPile.length > 0 && (
-                                    <>
-                                        <Card 
-                                            card={gameState.discardPile[gameState.discardPile.length - 1]}
-                                        />
-                                        <DeckLabel themeColors={themeColors}>
-                                            Discard ({gameState.discardPile.length})
-                                        </DeckLabel>
-                                    </>
+                                {gameState.discardPile.length > 0 ? (
+                                    <Card 
+                                        card={gameState.discardPile[gameState.discardPile.length - 1]}
+                                        onClick={discardSalvo}
+                                        disabled={!hasDrawnCard}
+                                    />
+                                ) : (
+                                    <EmptyCard 
+                                        themeColors={themeColors}
+                                        onClick={discardSalvo}
+                                        style={{ opacity: !hasDrawnCard ? 0.5 : 1 }}
+                                    >
+                                        Discard
+                                    </EmptyCard>
                                 )}
+                                <DeckLabel themeColors={themeColors}>
+                                    Discard ({gameState.discardPile.length})
+                                </DeckLabel>
                             </DeckStack>
                         </DeckArea>
                     </CenterArea>
