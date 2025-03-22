@@ -60,8 +60,10 @@ const SubSectionTitle = styled.h5<{ themeColors: any }>`
 interface PlayerHandProps {
     player: Player;
     isCurrentPlayer: boolean;
+    isDiscarding: boolean;
     onShipClick?: (ship: ShipCard) => void;
     onCardClick?: (cardIndex: number) => void;
+    discardSalvo?: () => void;
     selectedSalvo?: SalvoCard | null;
     devMode: boolean;
 }
@@ -69,8 +71,10 @@ interface PlayerHandProps {
 const PlayerHand: React.FC<PlayerHandProps> = ({ 
     player, 
     isCurrentPlayer, 
+    isDiscarding,
     onShipClick,
     onCardClick,
+    discardSalvo,
     selectedSalvo,
     devMode 
 }) => {
@@ -195,13 +199,17 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                             )}
                         </SubSectionTitle>
                         <CardsContainer>
-                            {player.hand.map((salvo, index) => (
+                            {player.hand.sort((a, b) => b.gunSize - a.gunSize).map((salvo, index) => (
                                 <Card
                                     key={`salvo-${index}`}
                                     card={salvo}
-                                    disabled={!isCurrentPlayer || !canUseSalvo(salvo)}
+                                    disabled={!isDiscarding && (!isCurrentPlayer || !canUseSalvo(salvo))}
                                     onClick={() => {
                                         if (!isCurrentPlayer) return;
+                                        if (isDiscarding) {
+                                            discardSalvo && discardSalvo();
+                                            return;
+                                        }
                                         if (!canUseSalvo(salvo)) {
                                             alert("You must have a deployed ship with matching gun size to use this salvo!");
                                             return;

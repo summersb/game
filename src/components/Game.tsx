@@ -44,12 +44,6 @@ const DeckStack = styled.div`
     position: relative;
 `;
 
-const DiscardPile = styled.div`
-    position: relative;
-    min-width: 120px;
-    min-height: 180px;
-`;
-
 const Button = styled.button<{ themeColors: any }>`
     padding: 10px 20px;
     background-color: ${props => props.themeColors.buttonBackground};
@@ -221,7 +215,7 @@ const Game: React.FC = () => {
 
         // If discarding but no salvo selected, show message
         if (!selectedSalvo) {
-            alert("Please select a salvo card to discard!");
+            setIsDiscarding(false);
             return;
         }
 
@@ -405,6 +399,7 @@ const Game: React.FC = () => {
                     <PlayerHand
                         player={gameState.players[(gameState.currentPlayerIndex + 1) % 2]}
                         isCurrentPlayer={false}
+                        isDiscarding={isDiscarding}
                         onShipClick={selectShip}
                         selectedSalvo={selectedSalvo?.card}
                         devMode={devMode}
@@ -469,7 +464,9 @@ const Game: React.FC = () => {
                     <PlayerHand
                         player={gameState.players[gameState.currentPlayerIndex]}
                         isCurrentPlayer={true}
+                        isDiscarding={isDiscarding}
                         onCardClick={playCard}
+                        discardSalvo={discardSalvo}
                         selectedSalvo={selectedSalvo?.card}
                         devMode={devMode}
                     />
