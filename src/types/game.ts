@@ -18,6 +18,7 @@ export interface Player {
     name: string;
     ships: ShipCard[];
     hand: SalvoCard[];
+    playedShips: ShipCard[];
     discardedSalvos: SalvoCard[];
 }
 
@@ -87,8 +88,8 @@ export const dealInitialHands = (shipDeck: ShipCard[], playDeck: SalvoCard[], nu
     const remainingShipDeck = [...shipDeck];
     const remainingPlayDeck = [...playDeck];
     
-    // Deal 3 ships to each player
-    for (let i = 0; i < 3; i++) {
+    // Deal 5 ships to each player
+    for (let i = 0; i < 5; i++) {
         for (let j = 0; j < numPlayers; j++) {
             if (remainingShipDeck.length > 0) {
                 const ship = remainingShipDeck.pop()!;
@@ -96,7 +97,7 @@ export const dealInitialHands = (shipDeck: ShipCard[], playDeck: SalvoCard[], nu
             }
         }
     }
-    
+
     // Deal 5 salvo cards to each player
     for (let i = 0; i < 5; i++) {
         for (let j = 0; j < numPlayers; j++) {

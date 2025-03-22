@@ -73,8 +73,22 @@ const Game: React.FC = () => {
         const { playerShips, playerHands, remainingShipDeck, remainingPlayDeck } = dealInitialHands(shipDeck, playDeck, 2);
         
         const players: Player[] = [
-            { id: '1', name: 'Player 1', ships: playerShips[0], hand: playerHands[0], discardedSalvos: [] },
-            { id: '2', name: 'Player 2', ships: playerShips[1], hand: playerHands[1], discardedSalvos: [] }
+            { 
+                id: '1', 
+                name: 'Player 1', 
+                ships: playerShips[0], 
+                hand: playerHands[0], 
+                playedShips: [], 
+                discardedSalvos: [] 
+            },
+            { 
+                id: '2', 
+                name: 'Player 2', 
+                ships: playerShips[1], 
+                hand: playerHands[1], 
+                playedShips: [], 
+                discardedSalvos: [] 
+            }
         ];
 
         setGameState({
@@ -97,47 +111,69 @@ const Game: React.FC = () => {
         setGameState(newState);
     };
 
-    const playSalvo = (cardIndex: number) => {
-        if (!selectedShip) return;
-
+    const playCard = (cardIndex: number) => {
         const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-        const targetPlayer = gameState.players[(gameState.currentPlayerIndex + 1) % 2];
-        const salvoCard = currentPlayer.hand[cardIndex];
+        const newState = { ...gameState };
+
+        // Check if we're playing a ship from hand
+        if (cardIndex < currentPlayer.ships.length) {
+            const ship = currentPlayer.ships[cardIndex];
+            
+            // Move ship from hand to played ships
+            newState.players[gameState.currentPlayerIndex].ships = 
+                currentPlayer.ships.filter((_, index) => index !== cardIndex);
+            newState.players[gameState.currentPlayerIndex].playedShips.push(ship);
+            
+            // Move to next player
+            newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % 2;
+            setGameState(newState);
+            setSelectedShip(null);
+            return;
+        }
+
+        // Playing a salvo card
+        const salvoIndex = cardIndex - currentPlayer.ships.length;
+        const salvo = currentPlayer.hand[salvoIndex];
+
+        if (!selectedShip) {
+            alert("Please select a target ship first!");
+            return;
+        }
 
         // Check if the salvo matches the selected ship's gun size
-        if (salvoCard.gunSize !== selectedShip.gunSize) {
+        if (salvo.gunSize !== selectedShip.gunSize) {
             alert("Salvo gun size must match the target ship's gun size!");
             return;
         }
 
-        const newState = { ...gameState };
-        
         // Remove the salvo card from hand and add to discarded
         newState.players[gameState.currentPlayerIndex].hand = 
-            currentPlayer.hand.filter((_, index) => index !== cardIndex);
-        newState.players[gameState.currentPlayerIndex].discardedSalvos.push(salvoCard);
+            currentPlayer.hand.filter((_, index) => index !== salvoIndex);
+        newState.players[gameState.currentPlayerIndex].discardedSalvos.push(salvo);
 
-        // Apply damage to the ship
-        const shipIndex = targetPlayer.ships.findIndex(ship => ship === selectedShip);
+        // Find the target ship in the opponent's played ships
+        const targetPlayer = gameState.players[(gameState.currentPlayerIndex + 1) % 2];
+        const shipIndex = targetPlayer.playedShips.findIndex(ship => ship === selectedShip);
+        
         if (shipIndex !== -1) {
             const updatedShip = { ...selectedShip };
-            updatedShip.hitPoints -= salvoCard.damage;
+            updatedShip.hitPoints -= salvo.damage;
 
             if (updatedShip.hitPoints <= 0) {
                 // Remove the destroyed ship
-                newState.players[(gameState.currentPlayerIndex + 1) % 2].ships =
-                    targetPlayer.ships.filter((_, index) => index !== shipIndex);
+                newState.players[(gameState.currentPlayerIndex + 1) % 2].playedShips =
+                    targetPlayer.playedShips.filter((_, index) => index !== shipIndex);
             } else {
                 // Update the damaged ship
-                newState.players[(gameState.currentPlayerIndex + 1) % 2].ships =
-                    targetPlayer.ships.map((ship, index) => 
+                newState.players[(gameState.currentPlayerIndex + 1) % 2].playedShips =
+                    targetPlayer.playedShips.map((ship, index) => 
                         index === shipIndex ? updatedShip : ship
                     );
             }
         }
 
         // Check for game over
-        if (newState.players[(gameState.currentPlayerIndex + 1) % 2].ships.length === 0) {
+        if (newState.players[(gameState.currentPlayerIndex + 1) % 2].playedShips.length === 0) {
             alert(`${currentPlayer.name} wins!`);
             newState.gameStarted = false;
         } else {
@@ -191,7 +227,7 @@ const Game: React.FC = () => {
                     <PlayerHand
                         player={gameState.players[gameState.currentPlayerIndex]}
                         isCurrentPlayer={true}
-                        onSalvoClick={playSalvo}
+                        onCardClick={playCard}
                     />
                 </GameBoard>
             )}

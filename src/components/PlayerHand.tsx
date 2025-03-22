@@ -1,5 +1,5 @@
 import styled from '@emotion/styled';
-import { Player, ShipCard } from '../types/game';
+import { Player, ShipCard, SalvoCard } from '../types/game';
 import Card from './Card';
 import { useTheme } from '../context/ThemeContext';
 
@@ -28,13 +28,26 @@ const Section = styled.div`
 const SectionTitle = styled.h4<{ themeColors: any }>`
     color: ${props => props.themeColors.text};
     margin: 5px 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+`;
+
+const SubSection = styled.div`
+    margin: 5px 0;
+`;
+
+const SubSectionTitle = styled.h5<{ themeColors: any }>`
+    color: ${props => props.themeColors.text};
+    margin: 5px 0;
+    font-size: 0.9em;
 `;
 
 interface PlayerHandProps {
     player: Player;
     isCurrentPlayer: boolean;
     onShipClick?: (ship: ShipCard) => void;
-    onSalvoClick?: (cardIndex: number) => void;
+    onCardClick?: (cardIndex: number) => void;
     selectedShip?: ShipCard | null;
 }
 
@@ -42,7 +55,7 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
     player, 
     isCurrentPlayer, 
     onShipClick,
-    onSalvoClick,
+    onCardClick,
     selectedShip 
 }) => {
     const { themeColors } = useTheme();
@@ -53,16 +66,36 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                 {player.name} {isCurrentPlayer ? '(Your Turn)' : ''}
             </PlayerName>
             <Section>
-                <SectionTitle themeColors={themeColors}>Ships</SectionTitle>
-                <CardsContainer>
-                    {player.ships.map((ship, index) => (
-                        <Card
-                            key={`ship-${index}`}
-                            card={ship}
-                            onClick={() => onShipClick && !isCurrentPlayer && onShipClick(ship)}
-                        />
-                    ))}
-                </CardsContainer>
+                <SectionTitle themeColors={themeColors}>
+                    Ships
+                </SectionTitle>
+                <SubSection>
+                    <SubSectionTitle themeColors={themeColors}>In Hand</SubSectionTitle>
+                    <CardsContainer>
+                        {player.ships.map((ship, index) => (
+                            <Card
+                                key={`hand-ship-${index}`}
+                                card={ship}
+                                onClick={() => {
+                                    if (!isCurrentPlayer) return;
+                                    onCardClick && onCardClick(index);
+                                }}
+                            />
+                        ))}
+                    </CardsContainer>
+                </SubSection>
+                <SubSection>
+                    <SubSectionTitle themeColors={themeColors}>Deployed</SubSectionTitle>
+                    <CardsContainer>
+                        {player.playedShips.map((ship, index) => (
+                            <Card
+                                key={`deployed-ship-${index}`}
+                                card={ship}
+                                onClick={() => onShipClick && !isCurrentPlayer && onShipClick(ship)}
+                            />
+                        ))}
+                    </CardsContainer>
+                </SubSection>
             </Section>
             {isCurrentPlayer && (
                 <Section>
@@ -72,7 +105,13 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                             <Card
                                 key={`salvo-${index}`}
                                 card={salvo}
-                                onClick={() => onSalvoClick && selectedShip && onSalvoClick(index)}
+                                onClick={() => {
+                                    if (!selectedShip && onCardClick) {
+                                        alert("Please select a target ship first!");
+                                        return;
+                                    }
+                                    onCardClick && onCardClick(index);
+                                }}
                             />
                         ))}
                     </CardsContainer>
