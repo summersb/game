@@ -84,6 +84,9 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
         .filter(ship => ship.type === 'carrier')
         .sort((a, b) => b.gunSize - a.gunSize);
     
+    // Sort deep six pile by gun size
+    const sortedDeepSixPile = [...player.deepSixPile].sort((a, b) => b.gunSize - a.gunSize);
+    
     // Get all unique gun sizes from deployed ships
     const deployedGunSizes = new Set(player.playedShips.map(ship => ship.gunSize));
 
@@ -144,6 +147,22 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                         ))}
                     </CardsContainer>
                 </Section>
+                {sortedDeepSixPile.length > 0 && (
+                    <Section>
+                        <SubSectionTitle themeColors={themeColors}>
+                            Deep Six Pile ({sortedDeepSixPile.length} ships)
+                        </SubSectionTitle>
+                        <CardsContainer>
+                            {sortedDeepSixPile.map((ship, index) => (
+                                <Card
+                                    key={`deep-six-${index}`}
+                                    card={ship}
+                                    disabled={true}
+                                />
+                            ))}
+                        </CardsContainer>
+                    </Section>
+                )}
             </BattleArea>
 
             {/* Play Area - Contains salvo cards and undeployed ships */}

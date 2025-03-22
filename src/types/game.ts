@@ -22,6 +22,7 @@ export interface Player {
     hand: SalvoCard[];
     playedShips: ShipCard[];
     discardedSalvos: SalvoCard[];
+    deepSixPile: ShipCard[];
 }
 
 export interface GameState {
