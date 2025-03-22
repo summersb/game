@@ -120,7 +120,7 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                                 key={`deployed-ship-${index}`}
                                 card={ship}
                                 onClick={() => onShipClick && !isCurrentPlayer && onShipClick(ship)}
-                                disabled={!isCurrentPlayer || !selectedSalvo}
+                                disabled={isCurrentPlayer || !selectedSalvo}
                             />
                         ))}
                     </CardsContainer>
@@ -139,7 +139,7 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                                         alert("Cannot target Aircraft Carriers while other ships remain!");
                                     }
                                 }}
-                                disabled={!isCurrentPlayer || !selectedSalvo || normalShips.length > 0}
+                                disabled={isCurrentPlayer || !selectedSalvo || normalShips.length > 0}
                             />
                         ))}
                     </CardsContainer>
