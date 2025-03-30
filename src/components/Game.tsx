@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import styled from '@emotion/styled';
 import { GameState, Player, ShipCard, SalvoCard, createShipDeck, createPlayDeck, dealInitialHands } from '../types/game';
 import PlayerHand from './PlayerHand';
 import Card from './Card';
 import { useTheme } from '../context/ThemeContext';
+import { wsService, ServerMessage } from '../services/websocket';
 
 const GameContainer = styled.div`
     max-width: 1200px;
@@ -108,83 +109,44 @@ const Game: React.FC = () => {
 
     const [selectedSalvo, setSelectedSalvo] = useState<{card: SalvoCard, index: number} | null>(null);
     const [hasDrawnCard, setHasDrawnCard] = useState(false);
+    const [deckCounts, setDeckCounts] = useState({
+        shipDeck: 0,
+        playDeck: 0,
+        discardPile: 0
+    });
+
+    useEffect(() => {
+        wsService.connect();
+        const handleMessage = (message: ServerMessage) => {
+            setGameState(message.gameState);
+            setDeckCounts({
+                shipDeck: message.shipDeckCount,
+                playDeck: message.playDeckCount,
+                discardPile: message.discardCount
+            });
+        };
+
+        wsService.addMessageHandler(handleMessage);
+        return () => {
+            wsService.removeMessageHandler(handleMessage);
+            wsService.disconnect();
+        };
+    }, []);
 
     const startGame = () => {
-        const shipDeck = createShipDeck();
-        const playDeck = createPlayDeck();
-        const { playerShips, playerHands, remainingShipDeck, remainingPlayDeck } = dealInitialHands(shipDeck, playDeck, 2);
-        
-        // Modify the initial setup to respect dev mode
-        const players: Player[] = [
-            { 
-                id: '1', 
-                name: 'Player 1', 
-                ships: [], // Start with empty ships array
-                hand: playerHands[0].map(card => ({ ...card, faceUp: devMode || card.faceUp })), 
-                playedShips: playerShips[0].map(ship => ({ ...ship, faceUp: devMode || ship.faceUp })), // Place initial ships here
-                discardedSalvos: [],
-                deepSixPile: []
-            },
-            { 
-                id: '2', 
-                name: 'Player 2', 
-                ships: [], // Start with empty ships array
-                hand: playerHands[1].map(card => ({ ...card, faceUp: devMode || card.faceUp })), 
-                playedShips: playerShips[1].map(ship => ({ ...ship, faceUp: devMode || ship.faceUp })), // Place initial ships here
-                discardedSalvos: [],
-                deepSixPile: []
-            }
-        ];
-
-        setGameState({
-            players,
-            shipDeck: remainingShipDeck.map(ship => ({ ...ship, faceUp: devMode || ship.faceUp })),
-            playDeck: remainingPlayDeck.map(card => ({ ...card, faceUp: devMode || card.faceUp })),
-            discardPile: [],
-            currentPlayerIndex: 0,
-            gameStarted: true
-        });
-        setHasDrawnCard(false); // Initialize hasDrawnCard state
+        wsService.sendMessage({ action: 'startGame' });
     };
 
     const drawSalvo = () => {
-        if (gameState.playDeck.length === 0) {
-            // If play deck is empty, shuffle discard pile back in
-            if (gameState.discardPile.length === 0) {
-                alert("No cards left to draw!");
-                return;
-            }
-            const newState = { ...gameState };
-            newState.playDeck = [...gameState.discardPile].map(card => ({ ...card, faceUp: false }));
-            newState.discardPile = [];
-            setGameState(newState);
-        }
-
-        const newState = { ...gameState };
-        const drawnCard = newState.playDeck.pop()!;
-        drawnCard.faceUp = devMode || true;
-
-        newState.players[newState.currentPlayerIndex].hand.push(drawnCard);
-        setGameState(newState);
+        wsService.sendMessage({ action: 'drawSalvo' });
         setHasDrawnCard(true);
     };
 
     const drawShip = () => {
-        if (gameState.shipDeck.length === 0) return;
-
-        const newState = { ...gameState };
-        const drawnShip = newState.shipDeck.pop()!;
-        drawnShip.faceUp = devMode || true; // Make ship face up in dev mode
-
-        newState.players[newState.currentPlayerIndex].ships.push(drawnShip);
-        setGameState(newState);
+        wsService.sendMessage({ action: 'drawShip' });
     };
 
     const selectSalvo = (salvo: SalvoCard, index: number) => {
-        // For targeting, check if the salvo's gun size matches any deployed ship
-        const currentPlayer = gameState.players[gameState.currentPlayerIndex];
-        const hasMatchingShip = currentPlayer.playedShips.some(ship => ship.gunSize === salvo.gunSize);
-        
         setSelectedSalvo(selectedSalvo?.card === salvo ? null : {card: salvo, index});
     };
 
@@ -194,25 +156,16 @@ const Game: React.FC = () => {
             return;
         }
 
-        // If discarding but no salvo selected, show message
         if (!selectedSalvo) {
             alert("Please select a salvo card to discard!");
             return;
         }
 
-        const newState = { ...gameState };
-        const currentPlayer = newState.players[newState.currentPlayerIndex];
-        
-        // Remove the salvo from hand and add to discard pile
-        const updatedHand = [...currentPlayer.hand];
-        const discardedCard = updatedHand.splice(selectedSalvo.index, 1)[0];
-        
-        newState.players[newState.currentPlayerIndex].hand = updatedHand;
-        newState.discardPile.push(discardedCard);
+        wsService.sendMessage({
+            action: 'discardSalvo',
+            card: selectedSalvo.card
+        });
 
-        // Move to next player
-        newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % 2;
-        setGameState(newState);
         setSelectedSalvo(null);
         setHasDrawnCard(false);
     };
@@ -228,65 +181,14 @@ const Game: React.FC = () => {
             return;
         }
 
-        const currentPlayer1 = gameState.players[gameState.currentPlayerIndex];
-        const hasMatchingShip = currentPlayer1.playedShips.some(ship => ship.gunSize === selectedSalvo.card.gunSize);
-        if (!hasMatchingShip) {
-            alert("You must have a ship with matching gun size to fire this salvo!");
-            return;
-        }
+        wsService.sendMessage({
+            action: 'fireSalvo',
+            card: selectedSalvo.card,
+            target: ship
+        });
 
-        const targetPlayer = gameState.players[(gameState.currentPlayerIndex + 1) % 2];
-        const normalShips = targetPlayer.playedShips.filter(s => s.type === 'normal');
-
-        // Only allow targeting carriers if no other ships remain
-        if (ship.type === 'carrier' && normalShips.length > 0) {
-            alert("Cannot target Aircraft Carriers while other ships remain!");
-            return;
-        }
-
-        // Apply damage and handle the salvo card
-        const newState = { ...gameState };
-        const currentPlayer = newState.players[newState.currentPlayerIndex];
-        
-        // Remove the salvo from hand and add to discard pile
-        currentPlayer.hand = currentPlayer.hand.filter((_, idx) => idx !== selectedSalvo.index);
-        newState.discardPile.push(selectedSalvo.card);
-
-        // Find and update the target ship
-        const shipIndex = targetPlayer.playedShips.findIndex(s => s === ship);
-        if (shipIndex !== -1) {
-            const updatedShip = { ...ship };
-            updatedShip.hitPoints -= selectedSalvo.card.damage;
-
-            if (updatedShip.hitPoints <= 0) {
-                // Remove the destroyed ship and add it to the current player's deep six pile
-                newState.players[(gameState.currentPlayerIndex + 1) % 2].playedShips =
-                    targetPlayer.playedShips.filter((_, index) => index !== shipIndex);
-                // Make the sunken ship face up and add it to the deep six pile
-                updatedShip.faceUp = true;
-                newState.players[gameState.currentPlayerIndex].deepSixPile.push(updatedShip);
-            } else {
-                // Update the damaged ship
-                newState.players[(gameState.currentPlayerIndex + 1) % 2].playedShips =
-                    targetPlayer.playedShips.map((s, index) => 
-                        index === shipIndex ? updatedShip : s
-                    );
-            }
-        }
-
-        // Check for game over
-        const remainingShips = newState.players[(gameState.currentPlayerIndex + 1) % 2].playedShips;
-        if (remainingShips.length === 0) {
-            alert(`${currentPlayer.name} wins!`);
-            newState.gameStarted = false;
-        } else {
-            // Move to next player
-            newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % 2;
-            setHasDrawnCard(false);
-        }
-
-        setGameState(newState);
         setSelectedSalvo(null);
+        setHasDrawnCard(false);
     };
 
     const playCard = (cardIndex: number) => {
@@ -300,18 +202,7 @@ const Game: React.FC = () => {
         // Check if we're playing a ship from hand
         if (cardIndex < currentPlayer.ships.length) {
             const ship = currentPlayer.ships[cardIndex];
-            
-            // Move ship from hand to played ships
-            const newState = { ...gameState };
-            newState.players[gameState.currentPlayerIndex].ships = 
-                currentPlayer.ships.filter((_, index) => index !== cardIndex);
-            newState.players[gameState.currentPlayerIndex].playedShips.push(ship);
-            
-            // Move to next player
-            newState.currentPlayerIndex = (newState.currentPlayerIndex + 1) % 2;
-            setGameState(newState);
-            setSelectedSalvo(null);
-            setHasDrawnCard(false);
+            // Ship playing will be handled by the server
             return;
         }
 
@@ -399,7 +290,7 @@ const Game: React.FC = () => {
                                             onClick={drawShip}
                                         />
                                         <DeckLabel themeColors={themeColors}>
-                                            Harbor ({gameState.shipDeck.length})
+                                            Harbor ({deckCounts.shipDeck})
                                         </DeckLabel>
                                     </>
                                 )}
@@ -413,7 +304,7 @@ const Game: React.FC = () => {
                                             disabled={hasDrawnCard}
                                         />
                                         <DeckLabel themeColors={themeColors}>
-                                            Salvos ({gameState.playDeck.length})
+                                            Salvos ({deckCounts.playDeck})
                                         </DeckLabel>
                                     </>
                                 )}
@@ -435,7 +326,7 @@ const Game: React.FC = () => {
                                     </EmptyCard>
                                 )}
                                 <DeckLabel themeColors={themeColors}>
-                                    Discard ({gameState.discardPile.length})
+                                    Discard ({deckCounts.discardPile})
                                 </DeckLabel>
                             </DeckStack>
                         </DeckArea>
