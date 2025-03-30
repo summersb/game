@@ -108,7 +108,6 @@ const Game: React.FC = () => {
 
     const [selectedSalvo, setSelectedSalvo] = useState<{card: SalvoCard, index: number} | null>(null);
     const [hasDrawnCard, setHasDrawnCard] = useState(false);
-    const [isDiscarding, setIsDiscarding] = useState(false);
 
     const startGame = () => {
         const shipDeck = createShipDeck();
@@ -182,21 +181,10 @@ const Game: React.FC = () => {
     };
 
     const selectSalvo = (salvo: SalvoCard, index: number) => {
-        // If we're discarding, always allow selection
-        if (isDiscarding) {
-            setSelectedSalvo(selectedSalvo?.card === salvo ? null : {card: salvo, index});
-            return;
-        }
-
         // For targeting, check if the salvo's gun size matches any deployed ship
         const currentPlayer = gameState.players[gameState.currentPlayerIndex];
         const hasMatchingShip = currentPlayer.playedShips.some(ship => ship.gunSize === salvo.gunSize);
         
-        if (!hasMatchingShip) {
-            alert("You must have a ship with matching gun size to fire this salvo!");
-            return;
-        }
-
         setSelectedSalvo(selectedSalvo?.card === salvo ? null : {card: salvo, index});
     };
 
@@ -206,16 +194,9 @@ const Game: React.FC = () => {
             return;
         }
 
-        // If not discarding, enter discard mode
-        if (!isDiscarding) {
-            setIsDiscarding(true);
-            setSelectedSalvo(null);
-            return;
-        }
-
         // If discarding but no salvo selected, show message
         if (!selectedSalvo) {
-            setIsDiscarding(false);
+            alert("Please select a salvo card to discard!");
             return;
         }
 
@@ -234,13 +215,9 @@ const Game: React.FC = () => {
         setGameState(newState);
         setSelectedSalvo(null);
         setHasDrawnCard(false);
-        setIsDiscarding(false);
     };
 
     const selectShip = (ship: ShipCard) => {
-        // Cancel discarding mode if trying to target a ship
-        setIsDiscarding(false);
-
         if (!hasDrawnCard) {
             alert("You must draw a card at the start of your turn!");
             return;
@@ -248,6 +225,13 @@ const Game: React.FC = () => {
 
         if (!selectedSalvo) {
             alert("Please select a salvo card first!");
+            return;
+        }
+
+        const currentPlayer1 = gameState.players[gameState.currentPlayerIndex];
+        const hasMatchingShip = currentPlayer1.playedShips.some(ship => ship.gunSize === selectedSalvo.card.gunSize);
+        if (!hasMatchingShip) {
+            alert("You must have a ship with matching gun size to fire this salvo!");
             return;
         }
 
@@ -306,9 +290,6 @@ const Game: React.FC = () => {
     };
 
     const playCard = (cardIndex: number) => {
-        // Cancel discarding mode if playing a card
-        setIsDiscarding(false);
-
         if (!hasDrawnCard && gameState.gameStarted) {
             alert("You must draw a card at the start of your turn!");
             return;
@@ -373,7 +354,6 @@ const Game: React.FC = () => {
                     <div>
                         Current Turn: {gameState.players[gameState.currentPlayerIndex].name}
                         {!hasDrawnCard && <span style={{ color: 'red' }}> - Draw a card to start your turn!</span>}
-                        {isDiscarding && <span style={{ color: 'blue' }}> - Select a salvo to discard</span>}
                         {selectedSalvo && (
                             <span> - Selected: {selectedSalvo.card.gunSize}" Salvo</span>
                         )}
@@ -399,7 +379,6 @@ const Game: React.FC = () => {
                     <PlayerHand
                         player={gameState.players[(gameState.currentPlayerIndex + 1) % 2]}
                         isCurrentPlayer={false}
-                        isDiscarding={isDiscarding}
                         onShipClick={selectShip}
                         selectedSalvo={selectedSalvo?.card}
                         devMode={devMode}
@@ -464,9 +443,7 @@ const Game: React.FC = () => {
                     <PlayerHand
                         player={gameState.players[gameState.currentPlayerIndex]}
                         isCurrentPlayer={true}
-                        isDiscarding={isDiscarding}
                         onCardClick={playCard}
-                        discardSalvo={discardSalvo}
                         selectedSalvo={selectedSalvo?.card}
                         devMode={devMode}
                     />

@@ -60,10 +60,8 @@ const SubSectionTitle = styled.h5<{ themeColors: any }>`
 interface PlayerHandProps {
     player: Player;
     isCurrentPlayer: boolean;
-    isDiscarding: boolean;
     onShipClick?: (ship: ShipCard) => void;
     onCardClick?: (cardIndex: number) => void;
-    discardSalvo?: () => void;
     selectedSalvo?: SalvoCard | null;
     devMode: boolean;
 }
@@ -71,10 +69,8 @@ interface PlayerHandProps {
 const PlayerHand: React.FC<PlayerHandProps> = ({ 
     player, 
     isCurrentPlayer, 
-    isDiscarding,
     onShipClick,
     onCardClick,
-    discardSalvo,
     selectedSalvo,
     devMode 
 }) => {
@@ -93,11 +89,6 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
     
     // Get all unique gun sizes from deployed ships
     const deployedGunSizes = new Set(player.playedShips.map(ship => ship.gunSize));
-
-    // Function to check if a salvo can be used
-    const canUseSalvo = (salvo: SalvoCard) => {
-        return deployedGunSizes.has(salvo.gunSize);
-    };
 
     // Sort undeployed ships by gun size
     const sortedUndeployedShips = [...player.ships].sort((a, b) => b.gunSize - a.gunSize);
@@ -203,17 +194,9 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                                 <Card
                                     key={`salvo-${index}`}
                                     card={salvo}
-                                    disabled={!isDiscarding && (!isCurrentPlayer || !canUseSalvo(salvo))}
+                                    disabled={!isCurrentPlayer}
                                     onClick={() => {
                                         if (!isCurrentPlayer) return;
-                                        if (isDiscarding) {
-                                            discardSalvo && discardSalvo();
-                                            return;
-                                        }
-                                        if (!canUseSalvo(salvo)) {
-                                            alert("You must have a deployed ship with matching gun size to use this salvo!");
-                                            return;
-                                        }
                                         onCardClick && onCardClick(player.ships.length + index);
                                     }}
                                 />
