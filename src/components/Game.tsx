@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import styled from '@emotion/styled';
-import { GameState, Player, ShipCard, SalvoCard, createShipDeck, createPlayDeck, dealInitialHands } from '../types/game';
+import { GameState, Player, ShipCard, SalvoCard } from '../types/game';
 import PlayerHand from './PlayerHand';
 import Card from './Card';
 import { useTheme } from '../context/ThemeContext';
@@ -103,7 +103,7 @@ const Game: React.FC = () => {
         shipDeck: [],
         playDeck: [],
         discardPile: [],
-        currentPlayerIndex: 0,
+        currentPlayerID: "1",
         gameStarted: false
     });
 
@@ -197,7 +197,8 @@ const Game: React.FC = () => {
             return;
         }
 
-        const currentPlayer = gameState.players[gameState.currentPlayerIndex];
+        const currentPlayer = gameState.players.find(p => p.id === gameState.currentPlayerID);
+        if (!currentPlayer) return;
 
         // Check if we're playing a ship from hand
         if (cardIndex < currentPlayer.ships.length) {
@@ -216,24 +217,6 @@ const Game: React.FC = () => {
     const toggleDevMode = () => {
         const newDevMode = !devMode;
         setDevMode(newDevMode);
-        
-        if (gameState.gameStarted) {
-            // Update all cards' visibility when toggling dev mode
-            const newState = {
-                ...gameState,
-                players: gameState.players.map(player => ({
-                    ...player,
-                    ships: player.ships.map(ship => ({ ...ship, faceUp: newDevMode || ship.faceUp })),
-                    hand: player.hand.map(card => ({ ...card, faceUp: newDevMode || card.faceUp })),
-                    playedShips: player.playedShips.map(ship => ({ ...ship, faceUp: newDevMode || ship.faceUp })),
-                    discardedSalvos: player.discardedSalvos.map(card => ({ ...card, faceUp: newDevMode || card.faceUp })),
-                    deepSixPile: player.deepSixPile.map(ship => ({ ...ship, faceUp: newDevMode || ship.faceUp }))
-                })),
-                shipDeck: gameState.shipDeck.map(ship => ({ ...ship, faceUp: newDevMode || ship.faceUp })),
-                playDeck: gameState.playDeck.map(card => ({ ...card, faceUp: newDevMode || card.faceUp }))
-            };
-            setGameState(newState);
-        }
     };
 
     return (
@@ -243,7 +226,7 @@ const Game: React.FC = () => {
                     <Button themeColors={themeColors} onClick={startGame}>Start Game</Button>
                 ) : (
                     <div>
-                        Current Turn: {gameState.players[gameState.currentPlayerIndex].name}
+                        Current Turn: {gameState.players.find(p => p.id === gameState.currentPlayerID)?.name}
                         {!hasDrawnCard && <span style={{ color: 'red' }}> - Draw a card to start your turn!</span>}
                         {selectedSalvo && (
                             <span> - Selected: {selectedSalvo.card.gunSize}" Salvo</span>
@@ -268,7 +251,7 @@ const Game: React.FC = () => {
             {gameState.gameStarted && (
                 <GameBoard>
                     <PlayerHand
-                        player={gameState.players[(gameState.currentPlayerIndex + 1) % 2]}
+                        player={gameState.players.find(p => p.id !== gameState.currentPlayerId)!}
                         isCurrentPlayer={false}
                         onShipClick={selectShip}
                         selectedSalvo={selectedSalvo?.card}
@@ -277,7 +260,7 @@ const Game: React.FC = () => {
                     <CenterArea>
                         <DeckArea>
                             <DeckStack>
-                                {gameState.shipDeck.length > 0 && (
+                                {deckCounts.shipDeck > 0 && (
                                     <>
                                         <Card 
                                             card={{ 
@@ -296,7 +279,7 @@ const Game: React.FC = () => {
                                 )}
                             </DeckStack>
                             <DeckStack>
-                                {gameState.playDeck.length > 0 && (
+                                {deckCounts.playDeck > 0 && (
                                     <>
                                         <Card 
                                             card={{ gunSize: 11, damage: 0, faceUp: devMode } as SalvoCard}
@@ -310,7 +293,7 @@ const Game: React.FC = () => {
                                 )}
                             </DeckStack>
                             <DeckStack>
-                                {gameState.discardPile.length > 0 ? (
+                                {deckCounts.discardPile > 0 ? (
                                     <Card 
                                         card={gameState.discardPile[gameState.discardPile.length - 1]}
                                         onClick={discardSalvo}
@@ -332,7 +315,7 @@ const Game: React.FC = () => {
                         </DeckArea>
                     </CenterArea>
                     <PlayerHand
-                        player={gameState.players[gameState.currentPlayerIndex]}
+                        player={gameState.players.find(p => p.id === gameState.currentPlayerID)!}
                         isCurrentPlayer={true}
                         onCardClick={playCard}
                         selectedSalvo={selectedSalvo?.card}

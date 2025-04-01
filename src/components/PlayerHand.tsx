@@ -77,32 +77,34 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
     const { themeColors } = useTheme();
     
     // Separate normal ships and carriers and sort by gun size
-    const normalShips = player.playedShips
+    const normalShips = player?.playedShips
         .filter(ship => ship.type === 'normal')
         .sort((a, b) => b.gunSize - a.gunSize);
-    const carriers = player.playedShips
+    const carriers = player?.playedShips
         .filter(ship => ship.type === 'carrier')
         .sort((a, b) => b.gunSize - a.gunSize);
     
     // Sort deep six pile by gun size
-    const sortedDeepSixPile = [...player.deepSixPile].sort((a, b) => b.gunSize - a.gunSize);
+    const sortedDeepSixPile = [...player?.deepSixPile].sort((a, b) => b.gunSize - a.gunSize);
     
     // Get all unique gun sizes from deployed ships
-    const deployedGunSizes = new Set(player.playedShips.map(ship => ship.gunSize));
+    const deployedGunSizes = new Set(player?.playedShips.map(ship => ship.gunSize));
 
     // Sort undeployed ships by gun size
-    const sortedUndeployedShips = [...player.ships].sort((a, b) => b.gunSize - a.gunSize);
+    const sortedUndeployedShips = [...player?.ships].sort((a, b) => b.gunSize - a.gunSize);
 
     // Only show play area if it's the current player or dev mode is on
-    const showPlayArea = isCurrentPlayer || devMode;
+    const showPlayArea: boolean = isCurrentPlayer || devMode;
     
+    const showSelected = selectedSalvo != null && isCurrentPlayer;
+    try{
     return (
         <PlayerContainer themeColors={themeColors}>
             <PlayerName themeColors={themeColors}>
-                {player.name} {isCurrentPlayer ? '(Your Turn)' : ''}
-                {selectedSalvo && isCurrentPlayer && (
+                {player?.name} {isCurrentPlayer ? '(Your Turn)' : ''}
+                {showSelected && (
                     <span style={{ fontSize: '0.8em', marginLeft: '10px' }}>
-                        (Selected: {selectedSalvo.gunSize}" Salvo)
+                        (Selected: {selectedSalvo?.gunSize}" Salvo)
                     </span>
                 )}
             </PlayerName>
@@ -206,7 +208,10 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                 </PlayArea>
             )}
         </PlayerContainer>
-    );
+    ); } catch (error) {
+        console.error('Error in PlayerHand:', error);
+        return null;
+    }
 };
 
 export default PlayerHand; 

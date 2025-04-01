@@ -1,21 +1,21 @@
 export type GunSize = 11 | 12.6 | 14 | 15 | 16 | 18;
 export type ShipType = 'normal' | 'carrier';
 
-export interface ShipCard {
-    gunSize: GunSize;
+export type ShipCard = {
+    gunSize: number;
     hitPoints: number;
     name: string;
     faceUp: boolean;
-    type: ShipType;
-}
+    type: 'normal' | 'carrier';
+};
 
-export interface SalvoCard {
-    gunSize: GunSize;
+export type SalvoCard = {
+    gunSize: number;
     damage: number;
     faceUp: boolean;
-}
+};
 
-export interface Player {
+export type Player = {
     id: string;
     name: string;
     ships: ShipCard[];
@@ -23,16 +23,16 @@ export interface Player {
     playedShips: ShipCard[];
     discardedSalvos: SalvoCard[];
     deepSixPile: ShipCard[];
-}
+};
 
-export interface GameState {
+export type GameState = {
     players: Player[];
     shipDeck: ShipCard[];
     playDeck: SalvoCard[];
     discardPile: SalvoCard[];
-    currentPlayerIndex: number;
+    currentPlayerID: string;
     gameStarted: boolean;
-}
+};
 
 export const createShipDeck = (): ShipCard[] => {
     const ships: ShipCard[] = [
