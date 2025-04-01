@@ -299,6 +299,7 @@ func drawSalvo() {
 	// Draw a card
 	if len(gameState.PlayDeck) > 0 {
 		card := gameState.PlayDeck[len(gameState.PlayDeck)-1]
+		card.FaceUp = true
 		gameState.PlayDeck = gameState.PlayDeck[:len(gameState.PlayDeck)-1]
 
 		// Add to current player's hand
