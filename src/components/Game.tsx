@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import styled from '@emotion/styled'
-import { GameState, Player, ShipCard, SalvoCard } from '../types/game'
+import { GameState, ShipCard, SalvoCard } from '../types/game'
 import PlayerHand from './PlayerHand'
 import Card from './Card'
 import { useTheme } from '../context/ThemeContext'
@@ -103,7 +103,7 @@ const Game: React.FC = () => {
     shipDeck: [],
     playDeck: [],
     discardPile: [],
-    currentPlayerID: '1',
+    currentPlayerId: '1',
     gameStarted: false,
   })
 
@@ -197,7 +197,7 @@ const Game: React.FC = () => {
       return
     }
 
-    const currentPlayer = gameState.players.find(p => p.id === gameState.currentPlayerID)
+    const currentPlayer = gameState.players.find(p => p.id === gameState.currentPlayerId)
     if (!currentPlayer) return
 
     // Check if we're playing a ship from hand
@@ -228,7 +228,7 @@ const Game: React.FC = () => {
           </Button>
         ) : (
           <div>
-            Current Turn: {gameState.players.find(p => p.id === gameState.currentPlayerID)?.name}
+            Current Turn: {gameState.players.find(p => p.id === gameState.currentPlayerId)?.name}
             {!hasDrawnCard && <span style={{ color: 'red' }}> - Draw a card to start your turn!</span>}
             {selectedSalvo && <span> - Selected: {selectedSalvo.card.gunSize}" Salvo</span>}
           </div>
@@ -311,7 +311,7 @@ const Game: React.FC = () => {
             </DeckArea>
           </CenterArea>
           <PlayerHand
-            player={gameState.players.find(p => p.id === gameState.currentPlayerID)!}
+            player={gameState.players.find(p => p.id === gameState.currentPlayerId)!}
             isCurrentPlayer={true}
             onCardClick={playCard}
             selectedSalvo={selectedSalvo?.card}
