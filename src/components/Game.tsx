@@ -113,7 +113,7 @@ const Game: React.FC = () => {
 
       // If we don't have a session ID yet, store it
       if (!wsService.getSessionId() && message.gameState.players.length > 0) {
-        wsService.setSessionId(message.gameState.players[0].id)
+        wsService.setSessionId(message.sessionId)
         wsService.setPlayerId(message.gameState.players[0].id)
       }
     }
@@ -134,7 +134,6 @@ const Game: React.FC = () => {
       alert('No game state found')
       return
     }
-    //console.log('drawSalvo sessionId:', sessionId)
     wsService.sendMessage({ action: 'drawSalvo', sessionId: sessionId })
     setHasDrawnCard(true)
   }
@@ -167,7 +166,6 @@ const Game: React.FC = () => {
       return
     }
 
-    console.log('discardSalvo sessionId:', sessionId)
     wsService.sendMessage({
       action: 'discardSalvo',
       sessionId: sessionId,

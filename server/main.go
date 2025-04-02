@@ -50,14 +50,12 @@ type ShipCard struct {
 	GunSize   float64 `json:"gunSize"`
 	HitPoints int     `json:"hitPoints"`
 	Name      string  `json:"name"`
-	FaceUp    bool    `json:"faceUp"`
 	Type      string  `json:"type"`
 }
 
 type SalvoCard struct {
 	GunSize float64 `json:"gunSize"`
 	Damage  int     `json:"damage"`
-	FaceUp  bool    `json:"faceUp"`
 }
 
 type ClientMessage struct {
@@ -109,8 +107,8 @@ var gameState = &GameState{
 func createShipDeck() []ShipCard {
 	ships := []ShipCard{
 		// Aircraft Carriers (2 cards)
-		{GunSize: 14, HitPoints: 8, Name: "Aircraft Carrier", FaceUp: false, Type: "carrier"},
-		{GunSize: 14, HitPoints: 8, Name: "Aircraft Carrier", FaceUp: false, Type: "carrier"},
+		{GunSize: 14, HitPoints: 8, Name: "Aircraft Carrier", Type: "carrier"},
+		{GunSize: 14, HitPoints: 8, Name: "Aircraft Carrier", Type: "carrier"},
 	}
 
 	// Add normal ships
@@ -134,7 +132,6 @@ func createShipDeck() []ShipCard {
 				GunSize:   ship.gunSize,
 				HitPoints: ship.hitPoints,
 				Name:      ship.name,
-				FaceUp:    false,
 				Type:      "normal",
 			})
 		}
@@ -167,7 +164,6 @@ func createPlayDeck() []SalvoCard {
 			salvos = append(salvos, SalvoCard{
 				GunSize: salvo.gunSize,
 				Damage:  damage,
-				FaceUp:  false,
 			})
 		}
 	}
@@ -203,7 +199,6 @@ func dealInitialHands(shipDeck []ShipCard, playDeck []SalvoCard, numPlayers int)
 		for j := range players {
 			if len(shipDeck) > 0 {
 				ship := shipDeck[len(shipDeck)-1]
-				ship.FaceUp = true
 				players[j].PlayedShips = append(players[j].PlayedShips, ship)
 				shipDeck = shipDeck[:len(shipDeck)-1]
 			}
@@ -215,7 +210,6 @@ func dealInitialHands(shipDeck []ShipCard, playDeck []SalvoCard, numPlayers int)
 		for j := range players {
 			if len(playDeck) > 0 {
 				salvo := playDeck[len(playDeck)-1]
-				salvo.FaceUp = true
 				players[j].Hand = append(players[j].Hand, salvo)
 				playDeck = playDeck[:len(playDeck)-1]
 			}
@@ -287,14 +281,10 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 		// Send updated game state back to all clients in the session
 		serverMsg := createServerMessage(currentSession, currentPlayerId)
-		prettyJSON, err := json.MarshalIndent(serverMsg, "", "  ")
-		if err != nil {
-			fmt.Println("Error marshalling:", err)
-			return
-		}
 
 		// Output the formatted JSON
-		fmt.Println("Server message:", string(prettyJSON))
+		fmt.Println("Server message:", serverMsg)
+
 		response, err := json.Marshal(serverMsg)
 		if err != nil {
 			log.Println(err)
@@ -426,7 +416,6 @@ func drawSalvo(session *GameSession) {
 	// Draw a card
 	if len(session.GameState.PlayDeck) > 0 {
 		card := session.GameState.PlayDeck[len(session.GameState.PlayDeck)-1]
-		card.FaceUp = true
 		session.GameState.PlayDeck = session.GameState.PlayDeck[:len(session.GameState.PlayDeck)-1]
 
 		// Add to current player's hand
@@ -501,7 +490,6 @@ func fireSalvo(session *GameSession, salvo SalvoCard, target ShipCard) {
 			if ship.HitPoints <= 0 {
 				// Remove destroyed ship and add to deep six pile
 				targetPlayer.PlayedShips = append(targetPlayer.PlayedShips[:i], targetPlayer.PlayedShips[i+1:]...)
-				ship.FaceUp = true
 				currentPlayer.DeepSixPile = append(currentPlayer.DeepSixPile, ship)
 			} else {
 				// Update damaged ship

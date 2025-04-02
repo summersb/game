@@ -72,7 +72,6 @@ class WebSocketService {
       // Add session and player information to all messages
       const messageWithSession = {
         ...message,
-        sessionId: this.sessionId,
         playerId: this.playerId,
       }
       this.ws.send(JSON.stringify(messageWithSession))
