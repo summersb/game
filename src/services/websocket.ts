@@ -2,20 +2,49 @@ import { GameState, ShipCard, SalvoCard } from '../types/game'
 
 export type ClientMessage = {
   action: 'startGame' | 'drawSalvo' | 'drawShip' | 'fireSalvo' | 'discardSalvo'
-  card?: SalvoCard | ShipCard
-  target?: ShipCard
+  sessionId?: string
+  playerId?: string
 }
+
+export type StartGameMessage = ClientMessage & {
+  action: 'startGame'
+  numPlayers: number
+}
+
+export type DrawSalvoMessage = ClientMessage & {
+  action: 'drawSalvo'
+}
+
+export type DrawShipMessage = ClientMessage & {
+  action: 'drawShip'
+}
+
+export type FireSalvoMessage = ClientMessage & {
+  action: 'fireSalvo'
+  salvo: SalvoCard
+  target: ShipCard
+}
+
+export type DiscardSalvoMessage = ClientMessage & {
+  action: 'discardSalvo'
+  salvo: SalvoCard
+}
+
+export type ClientMessageType = StartGameMessage | DrawSalvoMessage | DrawShipMessage | FireSalvoMessage | DiscardSalvoMessage
 
 export type ServerMessage = {
   gameState: GameState
   shipDeckCount: number
   playDeckCount: number
   discardCount: number
+  sessionId: string
 }
 
 class WebSocketService {
   private ws: WebSocket | null = null
   private messageHandlers: ((message: ServerMessage) => void)[] = []
+  private sessionId: string | null = null
+  private playerId: string | null = null
 
   connect() {
     this.ws = new WebSocket('ws://localhost:8080/ws')
@@ -37,10 +66,16 @@ class WebSocketService {
     }
   }
 
-  sendMessage(message: ClientMessage) {
+  sendMessage(message: ClientMessageType): void {
     console.log('Sending message:', message)
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(message))
+      // Add session and player information to all messages
+      const messageWithSession = {
+        ...message,
+        sessionId: this.sessionId,
+        playerId: this.playerId,
+      }
+      this.ws.send(JSON.stringify(messageWithSession))
     } else {
       console.error('WebSocket is not connected')
     }
@@ -60,6 +95,23 @@ class WebSocketService {
       this.ws.close()
       this.ws = null
     }
+  }
+
+  // New methods for session management
+  setSessionId(sessionId: string) {
+    this.sessionId = sessionId
+  }
+
+  setPlayerId(playerId: string) {
+    this.playerId = playerId
+  }
+
+  getSessionId(): string | null {
+    return this.sessionId
+  }
+
+  getPlayerId(): string | null {
+    return this.playerId
   }
 }
 

@@ -2,7 +2,7 @@ import styled from '@emotion/styled'
 import { ShipCard, SalvoCard } from '../types/game'
 import { useTheme } from '../context/ThemeContext'
 
-const CardContainer = styled.div<{ faceUp: boolean; themeColors: any; disabled?: boolean }>`
+const CardContainer = styled.div<{ themeColors: any; disabled?: boolean }>`
   width: 120px;
   height: 180px;
   border: 1px solid ${props => props.themeColors.cardText}33;
@@ -12,11 +12,11 @@ const CardContainer = styled.div<{ faceUp: boolean; themeColors: any; disabled?:
   padding: 10px;
   background-color: ${props => {
     if (props.disabled) return props.themeColors.handBackground
-    return props.faceUp ? props.themeColors.cardBackground : props.themeColors.buttonBackground
+    return props.themeColors.cardBackground
   }};
   color: ${props => {
     if (props.disabled) return props.themeColors.cardText + '66'
-    return props.faceUp ? props.themeColors.cardText : props.themeColors.buttonText
+    return props.themeColors.cardText
   }};
   cursor: ${props => (props.disabled ? 'not-allowed' : 'pointer')};
   user-select: none;
@@ -53,7 +53,8 @@ const StatLine = styled.div`
 `
 
 interface CardProps {
-  card: ShipCard | SalvoCard
+  card?: ShipCard | SalvoCard
+  type: 'ship' | 'salvo'
   onClick?: () => void
   disabled?: boolean
 }
@@ -62,7 +63,7 @@ const isShipCard = (card: ShipCard | SalvoCard): card is ShipCard => {
   return 'hitPoints' in card
 }
 
-const Card: React.FC<CardProps> = ({ card, onClick, disabled }) => {
+const Card: React.FC<CardProps> = ({ card, type, onClick, disabled }: CardProps) => {
   const { themeColors } = useTheme()
 
   const handleClick = () => {
@@ -72,23 +73,24 @@ const Card: React.FC<CardProps> = ({ card, onClick, disabled }) => {
   }
 
   return (
-    <CardContainer faceUp={card.faceUp} onClick={handleClick} themeColors={themeColors} disabled={disabled}>
-      {card.faceUp ? (
+    <CardContainer onClick={handleClick} themeColors={themeColors} disabled={disabled}>
+      {!card && (
+        <CardStats>
+          <div>{type === 'ship' ? '🚢' : '💥'}</div>
+        </CardStats>
+      )}
+      {card && (
         <>
           <CardTitle>{isShipCard(card) ? card.name : 'Salvo'}</CardTitle>
           <CardStats>
-            <StatLine>🎯 {card.gunSize}" guns</StatLine>
+            <StatLine>🎯 {card?.gunSize}" guns</StatLine>
             {isShipCard(card) ? (
-              <StatLine>❤️ {card.hitPoints} HP</StatLine>
+              <StatLine>❤️ {card?.hitPoints} HP</StatLine>
             ) : (
-              <StatLine>💥 {card.damage} damage</StatLine>
+              <StatLine>💥 {card?.damage} damage</StatLine>
             )}
           </CardStats>
         </>
-      ) : (
-        <CardStats>
-          <div>{isShipCard(card) ? '🚢' : '💥'}</div>
-        </CardStats>
       )}
     </CardContainer>
   )

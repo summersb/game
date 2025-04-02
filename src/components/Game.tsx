@@ -71,14 +71,6 @@ const Controls = styled.div`
   margin-bottom: 20px;
 `
 
-// Add new styled component for dev controls
-const DevControls = styled.div`
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  margin-left: 20px;
-`
-
 const EmptyCard = styled.div<{ themeColors: any }>`
   width: 120px;
   height: 180px;
@@ -97,16 +89,8 @@ const EmptyCard = styled.div<{ themeColors: any }>`
 
 const Game: React.FC = () => {
   const { themeColors, toggleTheme, theme } = useTheme()
-  const [devMode, setDevMode] = useState(false)
-  const [gameState, setGameState] = useState<GameState>({
-    players: [],
-    shipDeck: [],
-    playDeck: [],
-    discardPile: [],
-    currentPlayerId: '1',
-    gameStarted: false,
-  })
-
+  const [gameState, setGameState] = useState<GameState>()
+  const [sessionId, setSessionId] = useState<string>()
   const [selectedSalvo, setSelectedSalvo] = useState<{ card: SalvoCard; index: number } | null>(null)
   const [hasDrawnCard, setHasDrawnCard] = useState(false)
   const [deckCounts, setDeckCounts] = useState({
@@ -118,12 +102,20 @@ const Game: React.FC = () => {
   useEffect(() => {
     wsService.connect()
     const handleMessage = (message: ServerMessage) => {
+      console.log('handleMessage message:', message, message.sessionId)
       setGameState(message.gameState)
+      setSessionId(message.sessionId)
       setDeckCounts({
         shipDeck: message.shipDeckCount,
         playDeck: message.playDeckCount,
         discardPile: message.discardCount,
       })
+
+      // If we don't have a session ID yet, store it
+      if (!wsService.getSessionId() && message.gameState.players.length > 0) {
+        wsService.setSessionId(message.gameState.players[0].id)
+        wsService.setPlayerId(message.gameState.players[0].id)
+      }
     }
 
     wsService.addMessageHandler(handleMessage)
@@ -134,16 +126,25 @@ const Game: React.FC = () => {
   }, [])
 
   const startGame = () => {
-    wsService.sendMessage({ action: 'startGame' })
+    wsService.sendMessage({ action: 'startGame', numPlayers: 4 })
   }
 
   const drawSalvo = () => {
-    wsService.sendMessage({ action: 'drawSalvo' })
+    if (!gameState) {
+      alert('No game state found')
+      return
+    }
+    //console.log('drawSalvo sessionId:', sessionId)
+    wsService.sendMessage({ action: 'drawSalvo', sessionId: sessionId })
     setHasDrawnCard(true)
   }
 
   const drawShip = () => {
-    wsService.sendMessage({ action: 'drawShip' })
+    if (!gameState) {
+      alert('No game state found')
+      return
+    }
+    wsService.sendMessage({ action: 'drawShip', sessionId: sessionId })
   }
 
   const selectSalvo = (salvo: SalvoCard, index: number) => {
@@ -151,6 +152,11 @@ const Game: React.FC = () => {
   }
 
   const discardSalvo = () => {
+    if (!gameState) {
+      alert('No game state found')
+      return
+    }
+
     if (!hasDrawnCard) {
       alert('You must draw a card at the start of your turn!')
       return
@@ -161,16 +167,22 @@ const Game: React.FC = () => {
       return
     }
 
+    console.log('discardSalvo sessionId:', sessionId)
     wsService.sendMessage({
       action: 'discardSalvo',
-      card: selectedSalvo.card,
+      sessionId: sessionId,
+      salvo: selectedSalvo.card,
     })
 
     setSelectedSalvo(null)
     setHasDrawnCard(false)
   }
 
-  const selectShip = (ship: ShipCard) => {
+  const fireSalvo = (ship: ShipCard) => {
+    if (!gameState) {
+      alert('No game state found')
+      return
+    }
     if (!hasDrawnCard) {
       alert('You must draw a card at the start of your turn!')
       return
@@ -183,7 +195,8 @@ const Game: React.FC = () => {
 
     wsService.sendMessage({
       action: 'fireSalvo',
-      card: selectedSalvo.card,
+      sessionId: sessionId,
+      salvo: selectedSalvo.card,
       target: ship,
     })
 
@@ -192,20 +205,13 @@ const Game: React.FC = () => {
   }
 
   const playCard = (cardIndex: number) => {
-    if (!hasDrawnCard && gameState.gameStarted) {
+    if (!hasDrawnCard && gameState?.gameStarted) {
       alert('You must draw a card at the start of your turn!')
       return
     }
 
-    const currentPlayer = gameState.players.find(p => p.id === gameState.currentPlayerId)
+    const currentPlayer = gameState?.players.find(p => p.id === gameState?.currentPlayerId)
     if (!currentPlayer) return
-
-    // Check if we're playing a ship from hand
-    if (cardIndex < currentPlayer.ships.length) {
-      const ship = currentPlayer.ships[cardIndex]
-      // Ship playing will be handled by the server
-      return
-    }
 
     // If it's a salvo card, select it
     const salvoIndex = cardIndex - currentPlayer.ships.length
@@ -213,16 +219,10 @@ const Game: React.FC = () => {
     selectSalvo(salvo, salvoIndex)
   }
 
-  // Add function to toggle dev mode
-  const toggleDevMode = () => {
-    const newDevMode = !devMode
-    setDevMode(newDevMode)
-  }
-
   return (
     <GameContainer>
       <Controls>
-        {!gameState.gameStarted ? (
+        {!gameState ? (
           <Button themeColors={themeColors} onClick={startGame}>
             Start Game
           </Button>
@@ -234,44 +234,28 @@ const Game: React.FC = () => {
           </div>
         )}
         <div style={{ display: 'flex', alignItems: 'center' }}>
-          <DevControls>
-            <Button
-              themeColors={themeColors}
-              onClick={toggleDevMode}
-              style={{ backgroundColor: devMode ? themeColors.buttonHover : themeColors.buttonBackground }}
-            >
-              Dev Mode: {devMode ? 'ON' : 'OFF'}
-            </Button>
-          </DevControls>
           <Button themeColors={themeColors} onClick={toggleTheme}>
             Switch to {theme === 'light' ? 'Dark' : 'Light'} Mode
           </Button>
         </div>
       </Controls>
-      {gameState.gameStarted && (
+      {gameState && (
         <GameBoard>
-          <PlayerHand
-            player={gameState.players.find(p => p.id !== gameState.currentPlayerId)!}
-            isCurrentPlayer={false}
-            onShipClick={selectShip}
-            selectedSalvo={selectedSalvo?.card}
-            devMode={devMode}
-          />
+          {gameState.players.filter(p => p.id !== gameState.currentPlayerId).map(player => (
+            <PlayerHand
+              key={player.id}
+              player={player}
+              isCurrentPlayer={false}
+              selectedSalvo={selectedSalvo?.card}
+            />
+          ))}
           <CenterArea>
             <DeckArea>
               <DeckStack>
                 {deckCounts.shipDeck > 0 && (
                   <>
                     <Card
-                      card={
-                        {
-                          gunSize: 14,
-                          hitPoints: 5,
-                          name: 'Ship',
-                          faceUp: devMode,
-                          type: 'normal',
-                        } as ShipCard
-                      }
+                      type='ship'
                       onClick={drawShip}
                     />
                     <DeckLabel themeColors={themeColors}>Harbor ({deckCounts.shipDeck})</DeckLabel>
@@ -282,7 +266,7 @@ const Game: React.FC = () => {
                 {deckCounts.playDeck > 0 && (
                   <>
                     <Card
-                      card={{ gunSize: 11, damage: 0, faceUp: devMode } as SalvoCard}
+                      type='salvo'
                       onClick={drawSalvo}
                       disabled={hasDrawnCard}
                     />
@@ -293,7 +277,8 @@ const Game: React.FC = () => {
               <DeckStack>
                 {deckCounts.discardPile > 0 ? (
                   <Card
-                    card={gameState.discardPile[gameState.discardPile.length - 1]}
+                    type='salvo'
+                    card={gameState.discardPile}
                     onClick={discardSalvo}
                     disabled={!hasDrawnCard}
                   />
@@ -315,7 +300,6 @@ const Game: React.FC = () => {
             isCurrentPlayer={true}
             onCardClick={playCard}
             selectedSalvo={selectedSalvo?.card}
-            devMode={devMode}
           />
         </GameBoard>
       )}

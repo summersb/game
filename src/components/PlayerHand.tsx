@@ -47,10 +47,6 @@ const SectionTitle = styled.h4<{ themeColors: any }>`
   align-items: center;
 `
 
-const SubSection = styled.div`
-  margin: 5px 0;
-`
-
 const SubSectionTitle = styled.h5<{ themeColors: any }>`
   color: ${props => props.themeColors.text};
   margin: 5px 0;
@@ -63,7 +59,6 @@ interface PlayerHandProps {
   onShipClick?: (ship: ShipCard) => void
   onCardClick?: (cardIndex: number) => void
   selectedSalvo?: SalvoCard | null
-  devMode: boolean
 }
 
 const PlayerHand: React.FC<PlayerHandProps> = ({
@@ -71,9 +66,9 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
   isCurrentPlayer,
   onShipClick,
   onCardClick,
-  selectedSalvo,
-  devMode,
+  selectedSalvo
 }) => {
+  console.log('player', player, isCurrentPlayer, selectedSalvo)
   const { themeColors } = useTheme()
 
   // Separate normal ships and carriers and sort by gun size
@@ -87,10 +82,9 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
   const deployedGunSizes = new Set(player?.playedShips.map(ship => ship.gunSize))
 
   // Sort undeployed ships by gun size
-  const sortedUndeployedShips = player?.ships.sort((a, b) => b.gunSize - a.gunSize)
+  const sortedUndeployedShips = player?.ships?.sort((a, b) => b.gunSize - a.gunSize)
 
-  // Only show play area if it's the current player or dev mode is on
-  const showPlayArea: boolean = isCurrentPlayer || devMode
+  const showPlayArea: boolean = isCurrentPlayer
 
   const showSelected = selectedSalvo != null && isCurrentPlayer
   return (
@@ -108,7 +102,7 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
         <Section>
           <SubSectionTitle themeColors={themeColors}>Normal Ships</SubSectionTitle>
           <CardsContainer>
-            {normalShips.map((ship, index) => (
+            {normalShips?.map((ship, index) => (
               <Card
                 key={`deployed-ship-${index}`}
                 card={ship}
@@ -121,29 +115,29 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
         <Section>
           <SubSectionTitle themeColors={themeColors}>Aircraft Carriers</SubSectionTitle>
           <CardsContainer>
-            {carriers.map((ship, index) => (
+            {carriers?.map((ship, index) => (
               <Card
                 key={`deployed-carrier-${index}`}
                 card={ship}
                 onClick={() => {
-                  if (!isCurrentPlayer && onShipClick && normalShips.length === 0) {
+                  if (!isCurrentPlayer && onShipClick && normalShips?.length === 0) {
                     onShipClick(ship)
-                  } else if (!isCurrentPlayer && normalShips.length > 0) {
+                  } else if (!isCurrentPlayer && normalShips?.length > 0) {
                     alert('Cannot target Aircraft Carriers while other ships remain!')
                   }
                 }}
-                disabled={isCurrentPlayer || !selectedSalvo || normalShips.length > 0}
+                disabled={isCurrentPlayer || !selectedSalvo || normalShips?.length > 0}
               />
             ))}
           </CardsContainer>
         </Section>
-        {sortedDeepSixPile.length > 0 && (
+        {sortedDeepSixPile?.length > 0 && (
           <Section>
             <SubSectionTitle themeColors={themeColors}>
               Deep Six Pile ({sortedDeepSixPile.length} ships)
             </SubSectionTitle>
             <CardsContainer>
-              {sortedDeepSixPile.map((ship, index) => (
+              {sortedDeepSixPile?.map((ship, index) => (
                 <Card key={`deep-six-${index}`} card={ship} disabled={true} />
               ))}
             </CardsContainer>
@@ -158,7 +152,7 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
           <Section>
             <SubSectionTitle themeColors={themeColors}>Undeployed Ships</SubSectionTitle>
             <CardsContainer>
-              {sortedUndeployedShips.map((ship, index) => (
+              {sortedUndeployedShips?.map((ship, index) => (
                 <Card
                   key={`hand-ship-${index}`}
                   card={ship}
@@ -179,8 +173,8 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
               )}
             </SubSectionTitle>
             <CardsContainer>
-              {player.hand
-                .sort((a, b) => b.gunSize - a.gunSize)
+              {player?.hand
+                ?.sort((a, b) => b.gunSize - a.gunSize)
                 .map((salvo, index) => (
                   <Card
                     key={`salvo-${index}`}
@@ -188,7 +182,7 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                     disabled={!isCurrentPlayer}
                     onClick={() => {
                       if (!isCurrentPlayer) return
-                      onCardClick && onCardClick(player.ships.length + index)
+                      onCardClick && onCardClick(player?.ships?.length + index)
                     }}
                   />
                 ))}
