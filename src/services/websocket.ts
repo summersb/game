@@ -1,7 +1,7 @@
 import { GameState, ShipCard, SalvoCard } from '../types/game'
 
 export type ClientMessage = {
-  action: 'startGame' | 'drawSalvo' | 'drawShip' | 'fireSalvo' | 'discardSalvo'
+  action: 'startGame' | 'drawSalvo' | 'drawShip' | 'fireSalvo' | 'discardSalvo' | 'joinGame'
   sessionId?: string
   playerId?: string
 }
@@ -9,6 +9,11 @@ export type ClientMessage = {
 export type StartGameMessage = ClientMessage & {
   action: 'startGame'
   numPlayers: number
+}
+
+export type JoinGameMessage = ClientMessage & {
+  action: 'joinGame'
+  gameId: string
 }
 
 export type DrawSalvoMessage = ClientMessage & {
@@ -30,7 +35,7 @@ export type DiscardSalvoMessage = ClientMessage & {
   salvo: SalvoCard
 }
 
-export type ClientMessageType = StartGameMessage | DrawSalvoMessage | DrawShipMessage | FireSalvoMessage | DiscardSalvoMessage
+export type ClientMessageType = StartGameMessage | JoinGameMessage | DrawSalvoMessage | DrawShipMessage | FireSalvoMessage | DiscardSalvoMessage
 
 export type ServerMessage = {
   gameState: GameState

@@ -5,6 +5,7 @@ import PlayerHand from './PlayerHand'
 import Card from './Card'
 import { useTheme } from '../context/ThemeContext'
 import { wsService, ServerMessage } from '../services/websocket'
+import Welcome from './Welcome'
 
 const GameContainer = styled.div`
   max-width: 1200px;
@@ -45,32 +46,6 @@ const DeckStack = styled.div`
   position: relative;
 `
 
-const Button = styled.button<{ themeColors: any }>`
-  padding: 10px 20px;
-  background-color: ${props => props.themeColors.buttonBackground};
-  color: ${props => props.themeColors.buttonText};
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1em;
-
-  &:hover {
-    background-color: ${props => props.themeColors.buttonHover};
-  }
-
-  &:disabled {
-    background-color: #ccc;
-    cursor: not-allowed;
-  }
-`
-
-const Controls = styled.div`
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-`
-
 const EmptyCard = styled.div<{ themeColors: any }>`
   width: 120px;
   height: 180px;
@@ -88,7 +63,7 @@ const EmptyCard = styled.div<{ themeColors: any }>`
 `
 
 const Game: React.FC = () => {
-  const { themeColors, toggleTheme, theme } = useTheme()
+  const { themeColors} = useTheme()
   const [gameState, setGameState] = useState<GameState>()
   const [sessionId, setSessionId] = useState<string>()
   const [selectedSalvo, setSelectedSalvo] = useState<{ card: SalvoCard; index: number } | null>(null)
@@ -219,25 +194,14 @@ const Game: React.FC = () => {
 
   return (
     <GameContainer>
-      <Controls>
-        {!gameState ? (
-          <Button themeColors={themeColors} onClick={startGame}>
-            Start Game
-          </Button>
-        ) : (
+        {gameState ? (
           <div>
             Current Turn: {gameState.players.find(p => p.id === gameState.currentPlayerId)?.name}
             {!hasDrawnCard && <span style={{ color: 'red' }}> - Draw a card to start your turn!</span>}
             {selectedSalvo && <span> - Selected: {selectedSalvo.card.gunSize}" Salvo</span>}
           </div>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <Button themeColors={themeColors} onClick={toggleTheme}>
-            Switch to {theme === 'light' ? 'Dark' : 'Light'} Mode
-          </Button>
-        </div>
-      </Controls>
-      {gameState && (
+        ) : null}
+      {gameState ? (
         <GameBoard>
           {gameState.players.filter(p => p.id !== gameState.currentPlayerId).map(player => (
             <PlayerHand
@@ -300,6 +264,8 @@ const Game: React.FC = () => {
             selectedSalvo={selectedSalvo?.card}
           />
         </GameBoard>
+      ) : (
+        <Welcome onStartGame={startGame} />
       )}
     </GameContainer>
   )
