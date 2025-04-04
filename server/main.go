@@ -65,6 +65,12 @@ type ServerMessage struct {
 	SessionID     string    `json:"sessionId"`
 }
 
+type SessionInfo struct {
+	ID           string `json:"id"`
+	PlayerCount  int    `json:"playerCount"`
+	GameStarted  bool   `json:"gameStarted"`
+}
+
 var sessions = make(map[string]*GameSession)
 var sessionsMu sync.RWMutex
 
@@ -74,8 +80,30 @@ var gameState = &GameState{
 
 func main() {
 	http.HandleFunc("/ws", handleWebSocket)
+	http.HandleFunc("/sessions", handleListSessions)
 	log.Println("Server starting on :8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
+}
+
+func handleListSessions(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	sessionsMu.RLock()
+	sessionList := make([]SessionInfo, 0, len(sessions))
+	for _, session := range sessions {
+		sessionList = append(sessionList, SessionInfo{
+			ID:          session.ID,
+			PlayerCount: len(session.Clients),
+			GameStarted: session.GameState.GameStarted,
+		})
+	}
+	sessionsMu.RUnlock()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string][]SessionInfo{"sessions": sessionList})
 }
 
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -231,7 +259,6 @@ func handleMessage(session *GameSession, msg ClientMessage, p []byte) {
 			return
 		}
 		fireSalvo(session, fireMsg.Salvo, fireMsg.Target)
-
 	case "discardSalvo":
 		var discardMsg DiscardSalvoMessage
 		if err := json.Unmarshal(p, &discardMsg); err != nil {
