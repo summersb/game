@@ -7,6 +7,7 @@ import (
 	"math/rand"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -24,6 +25,7 @@ type GameSession struct {
 	GameState *GameState
 	Clients   map[string]*websocket.Conn // playerID -> connection
 	mu        sync.RWMutex
+	lastActivity time.Time
 }
 
 type ClientMessage struct {
@@ -79,6 +81,9 @@ var gameState = &GameState{
 }
 
 func main() {
+	// Start the session cleanup goroutine
+	cleanupInactiveSessions()
+
 	http.HandleFunc("/ws", handleWebSocket)
 	http.HandleFunc("/sessions", handleListSessions)
 	log.Println("Server starting on :8080")
@@ -152,6 +157,9 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		// Update session activity
+		updateSessionActivity(currentSession)
+
 		// Register client connection
 		currentSession.mu.Lock()
 		currentSession.Clients[currentPlayerId] = conn
@@ -190,11 +198,48 @@ func createNewSession() *GameSession {
 		ID:        fmt.Sprintf("%d", rand.Intn(1000000)),
 		GameState: &GameState{GameStarted: false},
 		Clients:   make(map[string]*websocket.Conn),
+		lastActivity: time.Now(),
 	}
 	sessionsMu.Lock()
 	sessions[session.ID] = session
 	sessionsMu.Unlock()
 	return session
+}
+
+func updateSessionActivity(session *GameSession) {
+	session.mu.Lock()
+	session.lastActivity = time.Now()
+	session.mu.Unlock()
+}
+
+func cleanupInactiveSessions() {
+	ticker := time.NewTicker(1 * time.Minute)
+	go func() {
+		for range ticker.C {
+			sessionsMu.Lock()
+			now := time.Now()
+			for id, session := range sessions {
+				session.mu.RLock()
+				inactive := now.Sub(session.lastActivity) > 5*time.Minute
+				session.mu.RUnlock()
+
+				if inactive {
+					// Close all client connections
+					session.mu.Lock()
+					for _, client := range session.Clients {
+						client.Close()
+					}
+					session.Clients = make(map[string]*websocket.Conn)
+					session.mu.Unlock()
+
+					// Remove the session
+					delete(sessions, id)
+					log.Printf("Removed inactive session: %s", id)
+				}
+			}
+			sessionsMu.Unlock()
+		}
+	}()
 }
 
 func createServerMessage(session *GameSession, playerID string) ServerMessage {
