@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
 	"net/http"
+	"os"
+	"os/signal"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -21,44 +25,12 @@ var upgrader = websocket.Upgrader{
 }
 
 type GameSession struct {
-	ID        string
-	GameState *GameState
-	Clients   map[string]*websocket.Conn // playerID -> connection
-	mu        sync.RWMutex
+	ID           string
+	GameState    *GameState
+  NumberOfPlayers int 
+	Clients      map[string]*websocket.Conn // playerID -> connection
+	mu           sync.RWMutex
 	lastActivity time.Time
-}
-
-type GameState struct {
-	Players         []Player    `json:"players"`
-	ShipDeck        []ShipCard  `json:"-"`
-	PlayDeck        []SalvoCard `json:"-"`
-	DiscardPile     []SalvoCard `json:"-"`
-	CurrentPlayerId string      `json:"currentPlayerId"`
-	GameStarted     bool        `json:"gameStarted"`
-	mu              sync.RWMutex
-	NumPlayers      int `json:"numPlayers"`
-}
-
-type Player struct {
-	ID              string      `json:"id"`
-	Name            string      `json:"name"`
-	Ships           []ShipCard  `json:"ships"`
-	Hand            []SalvoCard `json:"hand"`
-	PlayedShips     []ShipCard  `json:"playedShips"`
-	DiscardedSalvos []SalvoCard `json:"discardedSalvos"`
-	DeepSixPile     []ShipCard  `json:"deepSixPile"`
-}
-
-type ShipCard struct {
-	GunSize   float64 `json:"gunSize"`
-	HitPoints int     `json:"hitPoints"`
-	Name      string  `json:"name"`
-	Type      string  `json:"type"`
-}
-
-type SalvoCard struct {
-	GunSize float64 `json:"gunSize"`
-	Damage  int     `json:"damage"`
 }
 
 type ClientMessage struct {
@@ -75,7 +47,7 @@ type StartGameMessage struct {
 
 type CreateGameMessage struct {
 	ClientMessage
-	NumPlayers int    `json:"numPlayers"`
+	NumPlayers int    `json:"numberOfPlayers"`
 	PlayerName string `json:"playerName"`
 }
 
@@ -115,9 +87,9 @@ type ServerMessage struct {
 }
 
 type SessionInfo struct {
-	ID           string `json:"id"`
-	PlayerCount  int    `json:"playerCount"`
-	GameStarted  bool   `json:"gameStarted"`
+	ID          string `json:"id"`
+	PlayerCount int    `json:"playerCount"`
+	GameStarted bool   `json:"gameStarted"`
 }
 
 var sessions = make(map[string]*GameSession)
@@ -128,13 +100,50 @@ var gameState = &GameState{
 }
 
 func main() {
-	// Start the session cleanup goroutine
-	cleanupInactiveSessions()
+	// Set up cancellable context
+	ctx, cancel := context.WithCancel(context.Background())
 
-	http.HandleFunc("/ws", handleWebSocket)
-	http.HandleFunc("/sessions", handleListSessions)
+	// Ensure cleanup on exit
+	defer cancel()
+
+	// Create HTTP server with handlers
+	mux := http.NewServeMux()
+	mux.HandleFunc("/ws", handleWebSocket)
+	mux.HandleFunc("/sessions", handleListSessions)
+
+	server := &http.Server{
+		Addr:    ":8080",
+		Handler: mux,
+	}
+
+	// Start the session cleanup goroutine
+	cleanupInactiveSessions(ctx)
+
+  // Channel to listen for OS signals
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
+
+	// Goroutine to handle graceful shutdown
+	go func() {
+		<-sigChan
+		log.Println("Received shutdown signal, shutting down...")
+
+		// Cancel context for cleanup goroutines
+		cancel()
+
+		// Create timeout context for server shutdown
+		shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutdownCancel()
+
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			log.Printf("HTTP server Shutdown error: %v", err)
+		}
+	}()
+
 	log.Println("Server starting on :8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("Server error: %v", err)
+	}
 }
 
 func handleListSessions(w http.ResponseWriter, r *http.Request) {
@@ -220,7 +229,7 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 					sendError(conn, "Game session not found")
 					continue
 				}
-				if len(session.GameState.Players) >= session.GameState.NumPlayers {
+				if len(session.GameState.Players) >= session.NumberOfPlayers {
 					sendError(conn, "Game is full")
 					continue
 				}
@@ -282,10 +291,11 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 func createNewSession(numPlayers int) *GameSession {
 	session := &GameSession{
-		ID:        fmt.Sprintf("%d", rand.Intn(1000000)),
-		GameState: &GameState{GameStarted: false, NumPlayers: numPlayers},
-		Clients:   make(map[string]*websocket.Conn),
+		ID:           fmt.Sprintf("%d", rand.Intn(1000000)),
+		GameState:    &GameState{GameStarted: false},
+		Clients:      make(map[string]*websocket.Conn),
 		lastActivity: time.Now(),
+    NumberOfPlayers: numPlayers,
 	}
 	sessionsMu.Lock()
 	sessions[session.ID] = session
@@ -299,34 +309,56 @@ func updateSessionActivity(session *GameSession) {
 	session.mu.Unlock()
 }
 
-func cleanupInactiveSessions() {
+type sessionWithID struct {
+	id      string
+	session *GameSession
+}
+
+func cleanupInactiveSessions(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Minute)
 	go func() {
-		for range ticker.C {
-			sessionsMu.Lock()
-			now := time.Now()
-			for id, session := range sessions {
-				session.mu.RLock()
-				inactive := now.Sub(session.lastActivity) > 5*time.Minute
-				session.mu.RUnlock()
-
-				if inactive {
-					// Close all client connections
-					session.mu.Lock()
-					for _, client := range session.Clients {
-						client.Close()
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				var inactive []sessionWithID
+				sessionsMu.RLock()
+				for id, session := range sessions {
+					session.mu.RLock()
+					if time.Since(session.lastActivity) > 5*time.Minute {
+						log.Printf("Session %s inactive for %v, cleaning up", id, time.Since(session.lastActivity))
+						inactive = append(inactive, sessionWithID{id, session})
 					}
-					session.Clients = make(map[string]*websocket.Conn)
-					session.mu.Unlock()
-
-					// Remove the session
-					delete(sessions, id)
-					log.Printf("Removed inactive session: %s", id)
+					session.mu.RUnlock()
 				}
+				sessionsMu.RUnlock()
+
+				sessionsMu.Lock()
+				for _, s := range inactive {
+					s.session.mu.Lock()
+					for _, client := range s.session.Clients {
+						if err := client.Close(); err != nil {
+							log.Printf("Error closing client in session %s: %v", s.id, err)
+						}
+					}
+					s.session.Clients = make(map[string]*websocket.Conn)
+					s.session.mu.Unlock()
+
+					delete(sessions, s.id)
+					log.Printf("Removed inactive session: %s", s.id)
+				}
+				sessionsMu.Unlock()
+				if len(inactive) > 0 {
+					log.Printf("Cleaned up %d inactive session(s)", len(inactive))
+				}
+			case <-ctx.Done():
+				log.Println("Stopped session cleanup")
+				return
 			}
-			sessionsMu.Unlock()
 		}
 	}()
+}
+
 func sendError(conn *websocket.Conn, errorMsg string) {
 	response, _ := json.Marshal(ServerMessage{
 		MessageType: "error",
@@ -389,7 +421,7 @@ func handleMessage(session *GameSession, msg ClientMessage, p []byte) {
 	switch msg.Action {
 	case "startGame":
 		// Only allow starting the game if all players have joined
-		if len(session.GameState.Players) < session.GameState.NumPlayers {
+		if len(session.GameState.Players) < len(session.GameState.Players) {
 			sendError(session.Clients[msg.PlayerID], "Waiting for all players to join")
 			return
 		}
@@ -423,13 +455,13 @@ func handleMessage(session *GameSession, msg ClientMessage, p []byte) {
 // Game logic functions
 func startGame(session *GameSession, startGameMessage StartGameMessage) {
 	// Only allow starting if all players have joined
-	if len(session.GameState.Players) < session.GameState.NumPlayers {
+	if len(session.GameState.Players) < len(session.GameState.Players) {
 		return
 	}
 
 	shipDeck := createShipDeck()
 	playDeck := createPlayDeck()
-	players, remainingShipDeck, remainingPlayDeck := dealInitialHands(shipDeck, playDeck, session.GameState.NumPlayers)
+	players, remainingShipDeck, remainingPlayDeck := dealInitialHands(shipDeck, playDeck, session)
 
 	// Update player names while preserving the order
 	for i := range players {

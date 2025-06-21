@@ -29,6 +29,7 @@ type Player struct {
 }
 
 type GameState struct {
+//  NumberOfPlayers int         `json:"numberOfPlayers"`
 	Players         []Player    `json:"players"`
 	ShipDeck        []ShipCard  `json:"-"`
 	PlayDeck        []SalvoCard `json:"-"`
@@ -114,7 +115,8 @@ func shuffle[T any](deck []T) []T {
 	return shuffled
 }
 
-func dealInitialHands(shipDeck []ShipCard, playDeck []SalvoCard, numPlayers int) ([]Player, []ShipCard, []SalvoCard) {
+func dealInitialHands(shipDeck []ShipCard, playDeck []SalvoCard, session *GameSession) ([]Player, []ShipCard, []SalvoCard) {
+  var numPlayers = len(session.GameState.Players)
 	players := make([]Player, numPlayers)
 	for i := range players {
 		players[i] = Player{
