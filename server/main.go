@@ -34,6 +34,7 @@ type GameState struct {
 	CurrentPlayerId string      `json:"currentPlayerId"`
 	GameStarted     bool        `json:"gameStarted"`
 	mu              sync.RWMutex
+	NumPlayers      int `json:"numPlayers"`
 }
 
 type Player struct {
@@ -70,6 +71,18 @@ type StartGameMessage struct {
 	NumPlayers int `json:"numPlayers"`
 }
 
+type CreateGameMessage struct {
+	ClientMessage
+	NumPlayers int    `json:"numPlayers"`
+	PlayerName string `json:"playerName"`
+}
+
+type JoinGameMessage struct {
+	ClientMessage
+	SessionID  string `json:"sessionId"`
+	PlayerName string `json:"playerName"`
+}
+
 type DrawSalvoMessage struct {
 	ClientMessage
 }
@@ -95,6 +108,8 @@ type ServerMessage struct {
 	PlayDeckCount int       `json:"playDeckCount"`
 	DiscardCount  int       `json:"discardCount"`
 	SessionID     string    `json:"sessionId"`
+	MessageType   string    `json:"messageType"`
+	Error         string    `json:"error,omitempty"`
 }
 
 var sessions = make(map[string]*GameSession)
@@ -253,21 +268,61 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 		// Handle session management
 		if currentSession == nil {
-			if clientMsg.SessionID == "" {
-				// Create new session
-				currentSession = createNewSession()
+			switch clientMsg.Action {
+			case "createGame":
+				var createMsg CreateGameMessage
+				if err := json.Unmarshal(p, &createMsg); err != nil {
+					sendError(conn, "Invalid create game message")
+					continue
+				}
+				currentSession = createNewSession(createMsg.NumPlayers)
 				currentPlayerId = "1"
-			} else {
-				// Join existing session
+				// Add first player
+				currentSession.GameState.Players = []Player{{
+					ID:              currentPlayerId,
+					Name:            createMsg.PlayerName,
+					Ships:           make([]ShipCard, 0),
+					Hand:            make([]SalvoCard, 0),
+					PlayedShips:     make([]ShipCard, 0),
+					DiscardedSalvos: make([]SalvoCard, 0),
+					DeepSixPile:     make([]ShipCard, 0),
+				}}
+				sendGameStarted(conn, currentSession)
+
+			case "joinGame":
+				var joinMsg JoinGameMessage
+				if err := json.Unmarshal(p, &joinMsg); err != nil {
+					sendError(conn, "Invalid join game message")
+					continue
+				}
 				sessionsMu.RLock()
-				session, exists := sessions[clientMsg.SessionID]
+				session, exists := sessions[joinMsg.SessionID]
 				sessionsMu.RUnlock()
 				if !exists {
-					log.Println("Session not found:", clientMsg.SessionID)
+					sendError(conn, "Game session not found")
+					continue
+				}
+				if len(session.GameState.Players) >= session.GameState.NumPlayers {
+					sendError(conn, "Game is full")
 					continue
 				}
 				currentSession = session
-				currentPlayerId = clientMsg.PlayerID
+				currentPlayerId = fmt.Sprintf("%d", len(session.GameState.Players)+1)
+				// Add new player
+				session.GameState.Players = append(session.GameState.Players, Player{
+					ID:              currentPlayerId,
+					Name:            joinMsg.PlayerName,
+					Ships:           make([]ShipCard, 0),
+					Hand:            make([]SalvoCard, 0),
+					PlayedShips:     make([]ShipCard, 0),
+					DiscardedSalvos: make([]SalvoCard, 0),
+					DeepSixPile:     make([]ShipCard, 0),
+				})
+				sendGameStarted(conn, currentSession)
+
+			default:
+				sendError(conn, "Invalid action")
+				continue
 			}
 		}
 
@@ -304,16 +359,32 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func createNewSession() *GameSession {
+func createNewSession(numPlayers int) *GameSession {
 	session := &GameSession{
 		ID:        fmt.Sprintf("%d", rand.Intn(1000000)),
-		GameState: &GameState{GameStarted: false},
+		GameState: &GameState{GameStarted: false, NumPlayers: numPlayers},
 		Clients:   make(map[string]*websocket.Conn),
 	}
 	sessionsMu.Lock()
 	sessions[session.ID] = session
 	sessionsMu.Unlock()
 	return session
+}
+
+func sendError(conn *websocket.Conn, errorMsg string) {
+	response, _ := json.Marshal(ServerMessage{
+		MessageType: "error",
+		Error:       errorMsg,
+	})
+	conn.WriteMessage(websocket.TextMessage, response)
+}
+
+func sendGameStarted(conn *websocket.Conn, session *GameSession) {
+	response, _ := json.Marshal(ServerMessage{
+		MessageType: "gameStarted",
+		SessionID:   session.ID,
+	})
+	conn.WriteMessage(websocket.TextMessage, response)
 }
 
 func createServerMessage(session *GameSession, playerID string) ServerMessage {
@@ -361,6 +432,11 @@ func handleMessage(session *GameSession, msg ClientMessage, p []byte) {
 
 	switch msg.Action {
 	case "startGame":
+		// Only allow starting the game if all players have joined
+		if len(session.GameState.Players) < session.GameState.NumPlayers {
+			sendError(session.Clients[msg.PlayerID], "Waiting for all players to join")
+			return
+		}
 		var startGameMessage StartGameMessage
 		if err := json.Unmarshal(p, &startGameMessage); err != nil {
 			fmt.Println("Error parsing StartGameMessage:", err)
@@ -378,7 +454,6 @@ func handleMessage(session *GameSession, msg ClientMessage, p []byte) {
 			return
 		}
 		fireSalvo(session, fireMsg.Salvo, fireMsg.Target)
-
 	case "discardSalvo":
 		var discardMsg DiscardSalvoMessage
 		if err := json.Unmarshal(p, &discardMsg); err != nil {
@@ -391,9 +466,19 @@ func handleMessage(session *GameSession, msg ClientMessage, p []byte) {
 
 // Game logic functions
 func startGame(session *GameSession, startGameMessage StartGameMessage) {
+	// Only allow starting if all players have joined
+	if len(session.GameState.Players) < session.GameState.NumPlayers {
+		return
+	}
+
 	shipDeck := createShipDeck()
 	playDeck := createPlayDeck()
-	players, remainingShipDeck, remainingPlayDeck := dealInitialHands(shipDeck, playDeck, startGameMessage.NumPlayers)
+	players, remainingShipDeck, remainingPlayDeck := dealInitialHands(shipDeck, playDeck, session.GameState.NumPlayers)
+
+	// Update player names while preserving the order
+	for i := range players {
+		players[i].Name = session.GameState.Players[i].Name
+	}
 
 	session.GameState.Players = players
 	session.GameState.ShipDeck = remainingShipDeck
@@ -401,6 +486,13 @@ func startGame(session *GameSession, startGameMessage StartGameMessage) {
 	session.GameState.DiscardPile = make([]SalvoCard, 0)
 	session.GameState.CurrentPlayerId = "1"
 	session.GameState.GameStarted = true
+
+	// Notify all clients that the game has started
+	session.mu.RLock()
+	for _, client := range session.Clients {
+		sendGameStarted(client, session)
+	}
+	session.mu.RUnlock()
 }
 
 func drawSalvo(session *GameSession) {

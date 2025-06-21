@@ -98,11 +98,28 @@ const Game: React.FC = () => {
     playDeck: 0,
     discardPile: 0,
   })
+  const [gameMode, setGameMode] = useState<'create' | 'join' | 'playing'>('create')
+  const [numPlayers, setNumPlayers] = useState(2)
+  const [playerName, setPlayerName] = useState('')
+  const [joinSessionId, setJoinSessionId] = useState('')
+  const [error, setError] = useState<string>()
 
   useEffect(() => {
     wsService.connect()
     const handleMessage = (message: ServerMessage) => {
-      console.log('handleMessage message:', message, message.sessionId)
+      console.log('handleMessage message:', message)
+      
+      if (message.messageType === 'error') {
+        setError(message.error)
+        return
+      }
+
+      if (message.messageType === 'gameStarted') {
+        setGameMode('playing')
+        setError(undefined)
+        return
+      }
+
       setGameState(message.gameState)
       setSessionId(message.sessionId)
       setDeckCounts({
@@ -124,6 +141,34 @@ const Game: React.FC = () => {
       wsService.disconnect()
     }
   }, [])
+
+  const createGame = () => {
+    if (!playerName.trim()) {
+      setError('Please enter your name')
+      return
+    }
+    wsService.sendMessage({ 
+      action: 'createGame', 
+      numPlayers, 
+      playerName: playerName.trim() 
+    })
+  }
+
+  const joinGame = () => {
+    if (!playerName.trim()) {
+      setError('Please enter your name')
+      return
+    }
+    if (!joinSessionId.trim()) {
+      setError('Please enter a session ID')
+      return
+    }
+    wsService.sendMessage({ 
+      action: 'joinGame', 
+      sessionId: joinSessionId.trim(),
+      playerName: playerName.trim()
+    })
+  }
 
   const startGame = () => {
     wsService.sendMessage({ action: 'startGame', numPlayers: 4 })
@@ -221,9 +266,58 @@ const Game: React.FC = () => {
     <GameContainer>
       <Controls>
         {!gameState ? (
-          <Button themeColors={themeColors} onClick={startGame}>
-            Start Game
-          </Button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {gameMode === 'create' && (
+              <>
+                <input
+                  type="text"
+                  placeholder="Enter your name"
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                />
+                <select
+                  value={numPlayers}
+                  onChange={(e) => setNumPlayers(Number(e.target.value))}
+                  style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                >
+                  {[2, 3, 4].map(num => (
+                    <option key={num} value={num}>{num} Players</option>
+                  ))}
+                </select>
+                <Button themeColors={themeColors} onClick={createGame}>
+                  Create Game
+                </Button>
+                <Button themeColors={themeColors} onClick={() => setGameMode('join')}>
+                  Join Existing Game
+                </Button>
+              </>
+            )}
+            {gameMode === 'join' && (
+              <>
+                <input
+                  type="text"
+                  placeholder="Enter your name"
+                  value={playerName}
+                  onChange={(e) => setPlayerName(e.target.value)}
+                  style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                />
+                <input
+                  type="text"
+                  placeholder="Enter session ID"
+                  value={joinSessionId}
+                  onChange={(e) => setJoinSessionId(e.target.value)}
+                  style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ccc' }}
+                />
+                <Button themeColors={themeColors} onClick={joinGame}>
+                  Join Game
+                </Button>
+                <Button themeColors={themeColors} onClick={() => setGameMode('create')}>
+                  Create New Game
+                </Button>
+              </>
+            )}
+          </div>
         ) : (
           <div>
             Current Turn: {gameState.players.find(p => p.id === gameState.currentPlayerId)?.name}
@@ -237,6 +331,11 @@ const Game: React.FC = () => {
           </Button>
         </div>
       </Controls>
+      {error && (
+        <div style={{ color: 'red', marginBottom: '10px' }}>
+          {error}
+        </div>
+      )}
       {gameState && (
         <GameBoard>
           {gameState.players.filter(p => p.id !== gameState.currentPlayerId).map(player => (
