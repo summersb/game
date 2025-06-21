@@ -1,7 +1,7 @@
 import { GameState, ShipCard, SalvoCard } from '../types/game'
 
 export type ClientMessage = {
-  action: 'startGame' | 'drawSalvo' | 'drawShip' | 'fireSalvo' | 'discardSalvo' | 'joinGame'
+  action: 'startGame' | 'drawSalvo' | 'drawShip' | 'fireSalvo' | 'discardSalvo' | 'createGame' | 'joinGame'
   sessionId?: string
   playerId?: string
 }
@@ -35,7 +35,26 @@ export type DiscardSalvoMessage = ClientMessage & {
   salvo: SalvoCard
 }
 
-export type ClientMessageType = StartGameMessage | JoinGameMessage | DrawSalvoMessage | DrawShipMessage | FireSalvoMessage | DiscardSalvoMessage
+export type CreateGameMessage = ClientMessage & {
+  action: 'createGame'
+  numPlayers: number
+  playerName: string
+}
+
+export type JoinGameMessage = ClientMessage & {
+  action: 'joinGame'
+  sessionId: string
+  playerName: string
+}
+
+export type ClientMessageType = 
+  | StartGameMessage 
+  | DrawSalvoMessage 
+  | DrawShipMessage 
+  | FireSalvoMessage 
+  | DiscardSalvoMessage
+  | CreateGameMessage
+  | JoinGameMessage
 
 export type ServerMessage = {
   gameState: GameState
@@ -43,6 +62,8 @@ export type ServerMessage = {
   playDeckCount: number
   discardCount: number
   sessionId: string
+  messageType: 'gameState' | 'playerHand' | 'gameStarted' | 'error'
+  error?: string
 }
 
 class WebSocketService {
@@ -78,6 +99,7 @@ class WebSocketService {
       // Add session and player information to all messages
       const messageWithSession = {
         ...message,
+        sessionId: this.sessionId,
         playerId: this.playerId,
       }
       this.ws.send(JSON.stringify(messageWithSession))
