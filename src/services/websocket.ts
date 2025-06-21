@@ -74,6 +74,7 @@ class WebSocketService {
   sendMessage(message: ClientMessageType): void {
     console.log('Sending message:', message)
     if (this.ws?.readyState === WebSocket.OPEN) {
+      console.error('WebSocket is connected')
       // Add session and player information to all messages
       const messageWithSession = {
         ...message,
@@ -82,6 +83,8 @@ class WebSocketService {
       this.ws.send(JSON.stringify(messageWithSession))
     } else {
       console.error('WebSocket is not connected')
+      alert("Session timed out")
+      
     }
   }
 
