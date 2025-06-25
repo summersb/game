@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -24,79 +23,13 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-type GameSession struct {
-	ID           string
-	GameState    *GameState
-  NumberOfPlayers int 
-	Clients      map[string]*websocket.Conn // playerID -> connection
-	mu           sync.RWMutex
-	lastActivity time.Time
+type SessionManager struct {
+	sessions   map[string]*GameSession
+	sessionsMu sync.RWMutex
 }
 
-type ClientMessage struct {
-	Action    string `json:"action"`
-	SessionID string `json:"sessionId,omitempty"`
-	PlayerID  string `json:"playerId,omitempty"`
-}
-
-// Specific message types
-type StartGameMessage struct {
-	ClientMessage
-	NumPlayers int `json:"numPlayers"`
-}
-
-type CreateGameMessage struct {
-	ClientMessage
-	NumPlayers int    `json:"numberOfPlayers"`
-	PlayerName string `json:"playerName"`
-}
-
-type JoinGameMessage struct {
-	ClientMessage
-	SessionID  string `json:"sessionId"`
-	PlayerName string `json:"playerName"`
-}
-
-type DrawSalvoMessage struct {
-	ClientMessage
-}
-
-type DrawShipMessage struct {
-	ClientMessage
-}
-
-type FireSalvoMessage struct {
-	ClientMessage
-	Salvo  SalvoCard `json:"salvo"`
-	Target ShipCard  `json:"target"`
-}
-
-type DiscardSalvoMessage struct {
-	ClientMessage
-	Salvo SalvoCard `json:"salvo"`
-}
-
-type ServerMessage struct {
-	GameState     GameState `json:"gameState"`
-	ShipDeckCount int       `json:"shipDeckCount"`
-	PlayDeckCount int       `json:"playDeckCount"`
-	DiscardCount  int       `json:"discardCount"`
-	SessionID     string    `json:"sessionId"`
-	MessageType   string    `json:"messageType"`
-	Error         string    `json:"error,omitempty"`
-}
-
-type SessionInfo struct {
-	ID          string `json:"id"`
-	PlayerCount int    `json:"playerCount"`
-	GameStarted bool   `json:"gameStarted"`
-}
-
-var sessions = make(map[string]*GameSession)
-var sessionsMu sync.RWMutex
-
-var gameState = &GameState{
-	GameStarted: false,
+var manager = &SessionManager{
+	sessions: make(map[string]*GameSession),
 }
 
 func main() {
@@ -119,7 +52,7 @@ func main() {
 	// Start the session cleanup goroutine
 	cleanupInactiveSessions(ctx)
 
-  // Channel to listen for OS signals
+	// Channel to listen for OS signals
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
@@ -146,27 +79,6 @@ func main() {
 	}
 }
 
-func handleListSessions(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	sessionsMu.RLock()
-	sessionList := make([]SessionInfo, 0, len(sessions))
-	for _, session := range sessions {
-		sessionList = append(sessionList, SessionInfo{
-			ID:          session.ID,
-			PlayerCount: len(session.Clients),
-			GameStarted: session.GameState.GameStarted,
-		})
-	}
-	sessionsMu.RUnlock()
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string][]SessionInfo{"sessions": sessionList})
-}
-
 func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -175,11 +87,24 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	var currentSession *GameSession
-	var currentPlayerId string
+	ctx := &SessionContext{
+		Conn:          conn,
+		CurrentPlayer: "",
+		Session:       nil,
+	}
 
+	handleWebSocketsLoop(ctx)
+}
+
+type SessionContext struct {
+	Conn          *websocket.Conn
+	Session       *GameSession
+	CurrentPlayer string
+}
+
+func handleWebSocketsLoop(ctx *SessionContext) {
 	for {
-		messageType, p, err := conn.ReadMessage()
+		messageType, p, err := ctx.Conn.ReadMessage()
 		if err != nil {
 			log.Println(err)
 			return
@@ -193,114 +118,104 @@ func handleWebSocket(w http.ResponseWriter, r *http.Request) {
 
 		fmt.Println("Client message:", clientMsg)
 
-		// Handle session management
-		if currentSession == nil {
-			switch clientMsg.Action {
-			case "createGame":
-				var createMsg CreateGameMessage
-				if err := json.Unmarshal(p, &createMsg); err != nil {
-					sendError(conn, "Invalid create game message")
-					continue
-				}
-				currentSession = createNewSession(createMsg.NumPlayers)
-				currentPlayerId = "1"
-				// Add first player
-				currentSession.GameState.Players = []Player{{
-					ID:              currentPlayerId,
-					Name:            createMsg.PlayerName,
-					Ships:           make([]ShipCard, 0),
-					Hand:            make([]SalvoCard, 0),
-					PlayedShips:     make([]ShipCard, 0),
-					DiscardedSalvos: make([]SalvoCard, 0),
-					DeepSixPile:     make([]ShipCard, 0),
-				}}
-				sendGameStarted(conn, currentSession)
-
-			case "joinGame":
-				var joinMsg JoinGameMessage
-				if err := json.Unmarshal(p, &joinMsg); err != nil {
-					sendError(conn, "Invalid join game message")
-					continue
-				}
-				sessionsMu.RLock()
-				session, exists := sessions[joinMsg.SessionID]
-				sessionsMu.RUnlock()
-				if !exists {
-					sendError(conn, "Game session not found")
-					continue
-				}
-				if len(session.GameState.Players) >= session.NumberOfPlayers {
-					sendError(conn, "Game is full")
-					continue
-				}
-				currentSession = session
-				currentPlayerId = fmt.Sprintf("%d", len(session.GameState.Players)+1)
-				// Add new player
-				session.GameState.Players = append(session.GameState.Players, Player{
-					ID:              currentPlayerId,
-					Name:            joinMsg.PlayerName,
-					Ships:           make([]ShipCard, 0),
-					Hand:            make([]SalvoCard, 0),
-					PlayedShips:     make([]ShipCard, 0),
-					DiscardedSalvos: make([]SalvoCard, 0),
-					DeepSixPile:     make([]ShipCard, 0),
-				})
-				sendGameStarted(conn, currentSession)
-
-			default:
-				sendError(conn, "Invalid action")
+		if ctx.Session == nil {
+			if err := setupSession(ctx, clientMsg, p); err != nil {
+				sendError(ctx.Conn, err.Error())
 				continue
 			}
 		}
-
-		// Update session activity
-		updateSessionActivity(currentSession)
-
-		// Register client connection
-		currentSession.mu.Lock()
-		currentSession.Clients[currentPlayerId] = conn
-		currentSession.mu.Unlock()
-
-		// Handle the message
-		handleMessage(currentSession, clientMsg, p)
-
-		// Send updated game state back to all clients in the session
-		serverMsg := createServerMessage(currentSession, currentPlayerId)
-
-		// Output the formatted JSON
-		fmt.Println("Server message:", serverMsg)
-
-		response, err := json.Marshal(serverMsg)
-		if err != nil {
-			log.Println(err)
-			continue
-		}
-
-		// Broadcast to all clients in the session
-		currentSession.mu.RLock()
-		for _, client := range currentSession.Clients {
-			if err := client.WriteMessage(messageType, response); err != nil {
-				log.Println(err)
-				client.Close()
-				delete(currentSession.Clients, currentPlayerId)
-			}
-		}
-		currentSession.mu.RUnlock()
+		updateSessionActivity(ctx.Session)
+    registerClient(ctx)
+    processClientMessage(ctx, clientMsg, p)
+		broadcastGameState(ctx, messageType)
 	}
 }
 
-func createNewSession(numPlayers int) *GameSession {
-	session := &GameSession{
-		ID:           fmt.Sprintf("%d", rand.Intn(1000000)),
-		GameState:    &GameState{GameStarted: false},
-		Clients:      make(map[string]*websocket.Conn),
-		lastActivity: time.Now(),
-    NumberOfPlayers: numPlayers,
+func processClientMessage(ctx *SessionContext, msg ClientMessage, p []byte) {
+	handleMessage(ctx.Session, msg, p)
+}
+
+func registerClient(ctx *SessionContext) {
+	ctx.Session.mu.Lock()
+	ctx.Session.Clients[ctx.CurrentPlayer] = ctx.Conn
+	ctx.Session.mu.Unlock()
+}
+
+func setupSession(ctx *SessionContext, clientMsg ClientMessage, payload []byte) error {
+	switch clientMsg.Action {
+	case "createGame":
+		return handleCreateGame(ctx, payload)
+	case "joinGame":
+		return handleJoinGame(ctx, payload)
+	default:
+		return fmt.Errorf("invalid action")
 	}
-	sessionsMu.Lock()
-	sessions[session.ID] = session
-	sessionsMu.Unlock()
-	return session
+}
+
+func handleCreateGame(ctx *SessionContext, payload []byte) error {
+	var createMsg CreateGameMessage
+	if err := json.Unmarshal(payload, &createMsg); err != nil {
+		return fmt.Errorf("invalid create game message")
+	}
+	ctx.Session = createNewSession(createMsg.NumPlayers)
+	ctx.CurrentPlayer = "1"
+	ctx.Session.GameState.Players = append(ctx.Session.GameState.Players, newPlayer(ctx.CurrentPlayer, createMsg.PlayerName))
+	sendGameStarted(ctx.Conn, ctx.Session)
+	return nil
+}
+
+func handleJoinGame(ctx *SessionContext, payload []byte) error {
+	var joinMsg JoinGameMessage
+	if err := json.Unmarshal(payload, &joinMsg); err != nil {
+		return fmt.Errorf("invalid join game message")
+	}
+	manager.sessionsMu.RLock()
+	session, exists := manager.sessions[joinMsg.SessionID]
+	manager.sessionsMu.RUnlock()
+	if !exists {
+		return fmt.Errorf("game session not found")
+	}
+	if len(session.GameState.Players) >= session.NumberOfPlayers {
+		return fmt.Errorf("game is full")
+	}
+	ctx.Session = session
+	ctx.CurrentPlayer = fmt.Sprintf("%d", len(session.GameState.Players)+1)
+	session.GameState.Players = append(session.GameState.Players, newPlayer(ctx.CurrentPlayer, joinMsg.PlayerName))
+	sendGameStarted(ctx.Conn, ctx.Session)
+	return nil
+}
+
+func broadcastGameState(ctx *SessionContext, messageType int) {
+	serverMsg := createServerMessage(ctx.Session, ctx.CurrentPlayer)
+	fmt.Println("Server message:", serverMsg)
+
+	response, err := json.Marshal(serverMsg)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+
+	ctx.Session.mu.RLock()
+	for id, client := range ctx.Session.Clients {
+		if err := client.WriteMessage(messageType, response); err != nil {
+			log.Printf("Write to client %s failed: %v", id, err)
+			client.Close()
+			delete(ctx.Session.Clients, id)
+		}
+	}
+	ctx.Session.mu.RUnlock()
+}
+
+func newPlayer(id, name string) Player {
+	return Player{
+		ID:              id,
+		Name:            name,
+		Ships:           []ShipCard{},
+		Hand:            []SalvoCard{},
+		PlayedShips:     []ShipCard{},
+		DiscardedSalvos: []SalvoCard{},
+		DeepSixPile:     []ShipCard{},
+	}
 }
 
 func updateSessionActivity(session *GameSession) {
@@ -322,8 +237,8 @@ func cleanupInactiveSessions(ctx context.Context) {
 			select {
 			case <-ticker.C:
 				var inactive []sessionWithID
-				sessionsMu.RLock()
-				for id, session := range sessions {
+				manager.sessionsMu.RLock()
+				for id, session := range manager.sessions {
 					session.mu.RLock()
 					if time.Since(session.lastActivity) > 5*time.Minute {
 						log.Printf("Session %s inactive for %v, cleaning up", id, time.Since(session.lastActivity))
@@ -331,9 +246,9 @@ func cleanupInactiveSessions(ctx context.Context) {
 					}
 					session.mu.RUnlock()
 				}
-				sessionsMu.RUnlock()
+				manager.sessionsMu.RUnlock()
 
-				sessionsMu.Lock()
+				manager.sessionsMu.Lock()
 				for _, s := range inactive {
 					s.session.mu.Lock()
 					for _, client := range s.session.Clients {
@@ -344,10 +259,10 @@ func cleanupInactiveSessions(ctx context.Context) {
 					s.session.Clients = make(map[string]*websocket.Conn)
 					s.session.mu.Unlock()
 
-					delete(sessions, s.id)
+					delete(manager.sessions, s.id)
 					log.Printf("Removed inactive session: %s", s.id)
 				}
-				sessionsMu.Unlock()
+				manager.sessionsMu.Unlock()
 				if len(inactive) > 0 {
 					log.Printf("Cleaned up %d inactive session(s)", len(inactive))
 				}
@@ -367,95 +282,10 @@ func sendError(conn *websocket.Conn, errorMsg string) {
 	conn.WriteMessage(websocket.TextMessage, response)
 }
 
-func sendGameStarted(conn *websocket.Conn, session *GameSession) {
-	response, _ := json.Marshal(ServerMessage{
-		MessageType: "gameStarted",
-		SessionID:   session.ID,
-	})
-	conn.WriteMessage(websocket.TextMessage, response)
-}
-
-func createServerMessage(session *GameSession, playerID string) ServerMessage {
-	session.GameState.mu.RLock()
-	defer session.GameState.mu.RUnlock()
-
-	// Create a filtered game state for the client
-	filteredState := GameState{
-		CurrentPlayerId: session.GameState.CurrentPlayerId,
-		GameStarted:     session.GameState.GameStarted,
-		Players:         make([]Player, len(session.GameState.Players)),
-	}
-
-	// Copy player information with appropriate filtering
-	for i, player := range session.GameState.Players {
-		filteredState.Players[i] = Player{
-			ID:              player.ID,
-			Name:            player.Name,
-			PlayedShips:     player.PlayedShips,
-			DiscardedSalvos: player.DiscardedSalvos,
-			DeepSixPile:     player.DeepSixPile,
-		}
-
-		// Only include hand and ships for the current player
-		if player.ID == playerID {
-			filteredState.Players[i].Hand = player.Hand
-			filteredState.Players[i].Ships = player.Ships
-		}
-	}
-
-	return ServerMessage{
-		GameState:     filteredState,
-		ShipDeckCount: len(session.GameState.ShipDeck),
-		PlayDeckCount: len(session.GameState.PlayDeck),
-		DiscardCount:  len(session.GameState.DiscardPile),
-		SessionID:     session.ID,
-	}
-}
-
-func handleMessage(session *GameSession, msg ClientMessage, p []byte) {
-	session.GameState.mu.Lock()
-	defer session.GameState.mu.Unlock()
-
-	fmt.Println("Received message:", msg)
-
-	switch msg.Action {
-	case "startGame":
-		// Only allow starting the game if all players have joined
-		if len(session.GameState.Players) < len(session.GameState.Players) {
-			sendError(session.Clients[msg.PlayerID], "Waiting for all players to join")
-			return
-		}
-		var startGameMessage StartGameMessage
-		if err := json.Unmarshal(p, &startGameMessage); err != nil {
-			fmt.Println("Error parsing StartGameMessage:", err)
-			return
-		}
-		startGame(session, startGameMessage)
-	case "drawSalvo":
-		drawSalvo(session)
-	case "drawShip":
-		drawShip(session)
-	case "fireSalvo":
-		var fireMsg FireSalvoMessage
-		if err := json.Unmarshal(p, &fireMsg); err != nil {
-			fmt.Println("Error parsing FireSalvoMessage:", err)
-			return
-		}
-		fireSalvo(session, fireMsg.Salvo, fireMsg.Target)
-	case "discardSalvo":
-		var discardMsg DiscardSalvoMessage
-		if err := json.Unmarshal(p, &discardMsg); err != nil {
-			fmt.Println("Error parsing DiscardSalvoMessage:", err)
-			return
-		}
-		discardSalvo(session, discardMsg.Salvo)
-	}
-}
-
 // Game logic functions
 func startGame(session *GameSession, startGameMessage StartGameMessage) {
 	// Only allow starting if all players have joined
-	if len(session.GameState.Players) < len(session.GameState.Players) {
+	if len(session.GameState.Players) < startGameMessage.NumPlayers {
 		return
 	}
 
@@ -481,147 +311,4 @@ func startGame(session *GameSession, startGameMessage StartGameMessage) {
 		sendGameStarted(client, session)
 	}
 	session.mu.RUnlock()
-}
-
-func drawSalvo(session *GameSession) {
-	if len(session.GameState.PlayDeck) == 0 {
-		if len(session.GameState.DiscardPile) == 0 {
-			return
-		}
-		// Shuffle discard pile back into play deck
-		session.GameState.PlayDeck = session.GameState.DiscardPile
-		session.GameState.DiscardPile = nil
-	}
-
-	// Draw a card
-	if len(session.GameState.PlayDeck) > 0 {
-		card := session.GameState.PlayDeck[len(session.GameState.PlayDeck)-1]
-		session.GameState.PlayDeck = session.GameState.PlayDeck[:len(session.GameState.PlayDeck)-1]
-
-		// Add to current player's hand
-		for i := range session.GameState.Players {
-			if session.GameState.Players[i].ID == session.GameState.CurrentPlayerId {
-				session.GameState.Players[i].Hand = append(session.GameState.Players[i].Hand, card)
-				break
-			}
-		}
-	}
-}
-
-func drawShip(session *GameSession) {
-	if len(session.GameState.ShipDeck) > 0 {
-		ship := session.GameState.ShipDeck[len(session.GameState.ShipDeck)-1]
-		session.GameState.ShipDeck = session.GameState.ShipDeck[:len(session.GameState.ShipDeck)-1]
-
-		// Add to current player's ships
-		for i := range session.GameState.Players {
-			if session.GameState.Players[i].ID == session.GameState.CurrentPlayerId {
-				session.GameState.Players[i].Ships = append(session.GameState.Players[i].Ships, ship)
-				break
-			}
-		}
-	}
-}
-
-func fireSalvo(session *GameSession, salvo SalvoCard, target ShipCard) {
-	// Find current player and target player
-	var currentPlayer, targetPlayer *Player
-	for i := range session.GameState.Players {
-		if session.GameState.Players[i].ID == session.GameState.CurrentPlayerId {
-			currentPlayer = &session.GameState.Players[i]
-		} else {
-			targetPlayer = &session.GameState.Players[i]
-		}
-	}
-
-	if currentPlayer == nil || targetPlayer == nil {
-		return
-	}
-
-	// Check if current player has a matching ship
-	hasMatchingShip := false
-	for _, ship := range currentPlayer.PlayedShips {
-		if ship.GunSize == salvo.GunSize {
-			hasMatchingShip = true
-			break
-		}
-	}
-
-	if !hasMatchingShip {
-		return
-	}
-
-	// Remove salvo from current player's hand
-	for i, card := range currentPlayer.Hand {
-		if card.GunSize == salvo.GunSize && card.Damage == salvo.Damage {
-			currentPlayer.Hand = append(currentPlayer.Hand[:i], currentPlayer.Hand[i+1:]...)
-			break
-		}
-	}
-
-	// Add salvo to discard pile
-	session.GameState.DiscardPile = append(session.GameState.DiscardPile, salvo)
-
-	// Find and update target ship
-	for i, ship := range targetPlayer.PlayedShips {
-		if ship.GunSize == target.GunSize && ship.HitPoints == target.HitPoints {
-			ship.HitPoints -= salvo.Damage
-
-			if ship.HitPoints <= 0 {
-				// Remove destroyed ship and add to deep six pile
-				targetPlayer.PlayedShips = append(targetPlayer.PlayedShips[:i], targetPlayer.PlayedShips[i+1:]...)
-				currentPlayer.DeepSixPile = append(currentPlayer.DeepSixPile, ship)
-			} else {
-				// Update damaged ship
-				targetPlayer.PlayedShips[i] = ship
-			}
-			break
-		}
-	}
-
-	// Check for game over
-	if len(targetPlayer.PlayedShips) == 0 {
-		session.GameState.GameStarted = false
-		return
-	}
-
-	// Move to next player
-	if session.GameState.CurrentPlayerId == "1" {
-		session.GameState.CurrentPlayerId = "2"
-	} else {
-		session.GameState.CurrentPlayerId = "1"
-	}
-}
-
-func discardSalvo(session *GameSession, salvo SalvoCard) {
-	// Find current player
-	var currentPlayer *Player
-	for i := range session.GameState.Players {
-		if session.GameState.Players[i].ID == session.GameState.CurrentPlayerId {
-			currentPlayer = &session.GameState.Players[i]
-			break
-		}
-	}
-
-	if currentPlayer == nil {
-		return
-	}
-
-	// Remove salvo from current player's hand
-	for i, card := range currentPlayer.Hand {
-		if card.GunSize == salvo.GunSize && card.Damage == salvo.Damage {
-			currentPlayer.Hand = append(currentPlayer.Hand[:i], currentPlayer.Hand[i+1:]...)
-			break
-		}
-	}
-
-	// Add salvo to discard pile
-	session.GameState.DiscardPile = append(session.GameState.DiscardPile, salvo)
-
-	// Move to next player
-	if session.GameState.CurrentPlayerId == "1" {
-		session.GameState.CurrentPlayerId = "2"
-	} else {
-		session.GameState.CurrentPlayerId = "1"
-	}
 }
