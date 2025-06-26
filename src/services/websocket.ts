@@ -4,16 +4,12 @@ export type ClientMessage = {
   action: 'startGame' | 'drawSalvo' | 'drawShip' | 'fireSalvo' | 'discardSalvo' | 'createGame' | 'joinGame'
   sessionId?: string
   playerId?: string
+  playerName?: string
 }
 
 export type StartGameMessage = ClientMessage & {
   action: 'startGame'
   numPlayers: number
-}
-
-export type JoinGameMessage = ClientMessage & {
-  action: 'joinGame'
-  gameId: string
 }
 
 export type DrawSalvoMessage = ClientMessage & {

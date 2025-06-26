@@ -157,6 +157,7 @@ func handleCreateGame(ctx *SessionContext, payload []byte) error {
 	if err := json.Unmarshal(payload, &createMsg); err != nil {
 		return fmt.Errorf("invalid create game message")
 	}
+  log.Printf("Create game %d", createMsg.NumPlayers)
 	ctx.Session = createNewSession(createMsg.NumPlayers)
 	ctx.CurrentPlayer = "1"
 	ctx.Session.GameState.Players = append(ctx.Session.GameState.Players, newPlayer(ctx.CurrentPlayer, createMsg.PlayerName))
@@ -280,35 +281,4 @@ func sendError(conn *websocket.Conn, errorMsg string) {
 		Error:       errorMsg,
 	})
 	conn.WriteMessage(websocket.TextMessage, response)
-}
-
-// Game logic functions
-func startGame(session *GameSession, startGameMessage StartGameMessage) {
-	// Only allow starting if all players have joined
-	if len(session.GameState.Players) < startGameMessage.NumPlayers {
-		return
-	}
-
-	shipDeck := createShipDeck()
-	playDeck := createPlayDeck()
-	players, remainingShipDeck, remainingPlayDeck := dealInitialHands(shipDeck, playDeck, session)
-
-	// Update player names while preserving the order
-	for i := range players {
-		players[i].Name = session.GameState.Players[i].Name
-	}
-
-	session.GameState.Players = players
-	session.GameState.ShipDeck = remainingShipDeck
-	session.GameState.PlayDeck = remainingPlayDeck
-	session.GameState.DiscardPile = make([]SalvoCard, 0)
-	session.GameState.CurrentPlayerId = "1"
-	session.GameState.GameStarted = true
-
-	// Notify all clients that the game has started
-	session.mu.RLock()
-	for _, client := range session.Clients {
-		sendGameStarted(client, session)
-	}
-	session.mu.RUnlock()
 }

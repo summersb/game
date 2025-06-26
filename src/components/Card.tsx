@@ -1,8 +1,10 @@
 import styled from '@emotion/styled'
 import { ShipCard, SalvoCard } from '../types/game'
-import { useTheme } from '../context/ThemeContext'
+import { ThemeColors } from '../types/theme'
+import { useTheme } from '../context/useTheme'
+import React from 'react'
 
-const CardContainer = styled.div<{ themeColors: any; disabled?: boolean }>`
+const CardContainer = styled.div<{ themeColors: ThemeColors; disabled?: boolean }>`
   width: 120px;
   height: 180px;
   border: 1px solid ${props => props.themeColors.cardText}33;

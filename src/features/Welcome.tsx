@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react'
+import React, { useEffect, useState } from 'react'
 import styled from '@emotion/styled'
-import { useTheme } from '../context/ThemeContext'
-import { wsService } from '../services/websocket'
+import { wsService } from '../services/websocket.ts'
+import { ThemeColors } from '../types/theme.ts'
+import ThemeLinkButton from '../components/ThemeLinkButton.tsx'
+import { useTheme } from '../context/useTheme.tsx'
 
 const WelcomeContainer = styled.div`
   display: flex;
@@ -12,26 +14,7 @@ const WelcomeContainer = styled.div`
   gap: 20px;
 `
 
-const Title = styled.h1<{ themeColors: any }>`
-  color: ${props => props.themeColors.text};
-  margin-bottom: 20px;
-`
-
-const Button = styled.button<{ themeColors: any }>`
-  padding: 15px 30px;
-  background-color: ${props => props.themeColors.buttonBackground};
-  color: ${props => props.themeColors.buttonText};
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 1.2em;
-
-  &:hover {
-    background-color: ${props => props.themeColors.buttonHover};
-  }
-`
-
-const GameList = styled.div<{ themeColors: any }>`
+const GameList = styled.div<{ themeColors: ThemeColors }>`
   width: 100%;
   max-width: 600px;
   margin: 20px 0;
@@ -41,7 +24,7 @@ const GameList = styled.div<{ themeColors: any }>`
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 `
 
-const GameItem = styled.div<{ themeColors: any }>`
+const GameItem = styled.div<{ themeColors: ThemeColors }>`
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -63,18 +46,18 @@ const GameInfo = styled.div`
 `
 
 interface Game {
-  id: string;
-  name: string;
-  playerCount: number;
-  currentPlayers: number;
-  status: 'waiting' | 'in_progress' | 'finished';
+  id: string
+  name: string
+  playerCount: number
+  currentPlayers: number
+  status: 'waiting' | 'in_progress' | 'finished'
 }
 
 interface WelcomeProps {
-  onStartGame: () => void;
+  onStartGame: () => void
 }
 
-const Welcome: React.FC<WelcomeProps> = ({ onStartGame }) => {
+const Welcome: React.FC<WelcomeProps> = () => {
   const { themeColors } = useTheme()
   const [games, setGames] = useState<Game[]>([])
   const [loading, setLoading] = useState(true)
@@ -92,7 +75,7 @@ const Welcome: React.FC<WelcomeProps> = ({ onStartGame }) => {
       }
     }
 
-    fetchGames()
+    fetchGames().catch(console.error)
     // Refresh games list every 5 seconds
     const interval = setInterval(fetchGames, 5000)
     return () => clearInterval(interval)
@@ -100,7 +83,7 @@ const Welcome: React.FC<WelcomeProps> = ({ onStartGame }) => {
 
   const joinGame = async (gameId: string) => {
     try {
-      await wsService.sendMessage({ action: 'joinGame', gameId })
+      await wsService.sendMessage({ action: 'joinGame', sessionId: gameId, playerName: 'test' })
     } catch (error) {
       console.error('Error joining game:', error)
     }
@@ -116,14 +99,12 @@ const Welcome: React.FC<WelcomeProps> = ({ onStartGame }) => {
           <div style={{ color: themeColors.text }}>No games available</div>
         ) : (
           games.map(game => (
-            <GameItem 
-              key={game.id} 
-              themeColors={themeColors}
-              onClick={() => joinGame(game.id)}
-            >
+            <GameItem key={game.id} themeColors={themeColors} onClick={() => joinGame(game.id)}>
               <GameInfo>
                 <span>Game {game.id}</span>
-                <span>{game.currentPlayers}/{game.playerCount} players</span>
+                <span>
+                  {game.currentPlayers}/{game.playerCount} players
+                </span>
                 <span>{game.status}</span>
               </GameInfo>
             </GameItem>
@@ -131,11 +112,9 @@ const Welcome: React.FC<WelcomeProps> = ({ onStartGame }) => {
         )}
       </GameList>
 
-      <Button themeColors={themeColors} onClick={onStartGame}>
-        Create New Game
-      </Button>
+      <ThemeLinkButton to="/creategame">Create New Game</ThemeLinkButton>
     </WelcomeContainer>
   )
 }
 
-export default Welcome 
+export default Welcome

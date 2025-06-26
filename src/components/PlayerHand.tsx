@@ -1,30 +1,32 @@
 import styled from '@emotion/styled'
 import { Player, ShipCard, SalvoCard } from '../types/game'
 import Card from './Card'
-import { useTheme } from '../context/ThemeContext'
+import { ThemeColors } from '../types/theme.ts'
+import { useTheme } from '../context/useTheme.tsx'
+import React from 'react'
 
-const PlayerContainer = styled.div<{ themeColors: any }>`
+const PlayerContainer = styled.div<{ themeColors: ThemeColors }>`
   display: flex;
   flex-direction: column;
   gap: 20px;
   width: 100%;
 `
 
-const BattleArea = styled.div<{ themeColors: any }>`
+const BattleArea = styled.div<{ themeColors: ThemeColors }>`
   padding: 20px;
   background-color: ${props => props.themeColors.handBackground};
   border-radius: 12px;
   margin: 10px;
 `
 
-const PlayArea = styled.div<{ themeColors: any }>`
+const PlayArea = styled.div<{ themeColors: ThemeColors }>`
   padding: 20px;
   background-color: ${props => props.themeColors.handBackground};
   border-radius: 12px;
   margin: 10px;
 `
 
-const PlayerName = styled.h3<{ themeColors: any }>`
+const PlayerName = styled.h3<{ themeColors: ThemeColors }>`
   margin: 0 0 10px 0;
   color: ${props => props.themeColors.text};
 `
@@ -39,7 +41,7 @@ const Section = styled.div`
   margin: 10px 0;
 `
 
-const SectionTitle = styled.h4<{ themeColors: any }>`
+const SectionTitle = styled.h4<{ themeColors: ThemeColors }>`
   color: ${props => props.themeColors.text};
   margin: 5px 0;
   display: flex;
@@ -47,7 +49,7 @@ const SectionTitle = styled.h4<{ themeColors: any }>`
   align-items: center;
 `
 
-const SubSectionTitle = styled.h5<{ themeColors: any }>`
+const SubSectionTitle = styled.h5<{ themeColors: ThemeColors }>`
   color: ${props => props.themeColors.text};
   margin: 5px 0;
   font-size: 0.9em;
@@ -79,7 +81,7 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
   const sortedDeepSixPile = player?.deepSixPile.sort((a, b) => b.gunSize - a.gunSize)
 
   // Get all unique gun sizes from deployed ships
-  const deployedGunSizes = new Set(player?.playedShips.map(ship => ship.gunSize))
+//  const deployedGunSizes = new Set(player?.playedShips.map(ship => ship.gunSize))
 
   // Sort undeployed ships by gun size
   const sortedUndeployedShips = player?.ships?.sort((a, b) => b.gunSize - a.gunSize)
@@ -106,6 +108,7 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
               <Card
                 key={`deployed-ship-${index}`}
                 card={ship}
+                type="ship"
                 onClick={() => onShipClick && !isCurrentPlayer && onShipClick(ship)}
                 disabled={isCurrentPlayer || !selectedSalvo}
               />
@@ -119,6 +122,7 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
               <Card
                 key={`deployed-carrier-${index}`}
                 card={ship}
+                type="ship"
                 onClick={() => {
                   if (!isCurrentPlayer && onShipClick && normalShips?.length === 0) {
                     onShipClick(ship)
@@ -138,7 +142,7 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
             </SubSectionTitle>
             <CardsContainer>
               {sortedDeepSixPile?.map((ship, index) => (
-                <Card key={`deep-six-${index}`} card={ship} disabled={true} />
+                <Card key={`deep-six-${index}`} card={ship} type="ship" disabled={true} />
               ))}
             </CardsContainer>
           </Section>
@@ -156,9 +160,10 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                 <Card
                   key={`hand-ship-${index}`}
                   card={ship}
+                  type="ship"
                   onClick={() => {
                     if (!isCurrentPlayer) return
-                    onCardClick && onCardClick(player.ships.indexOf(ship))
+                    onCardClick?.(player.ships.indexOf(ship))
                   }}
                   disabled={!isCurrentPlayer || selectedSalvo !== null}
                 />
@@ -179,10 +184,11 @@ const PlayerHand: React.FC<PlayerHandProps> = ({
                   <Card
                     key={`salvo-${index}`}
                     card={salvo}
+                    type="salvo"
                     disabled={!isCurrentPlayer}
                     onClick={() => {
                       if (!isCurrentPlayer) return
-                      onCardClick && onCardClick(player?.ships?.length + index)
+                      onCardClick?.(player?.ships?.length + index)
                     }}
                   />
                 ))}
